@@ -2,6 +2,10 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
+<p align="center">
+  <img src="screenshots/LogoCallOut.png" alt="Logo" width="150"/>
+</p>
+
 **Call Out 🫵** est une application web multijoueur gratuite conçue pour animer vos soirées entre amis avec des votes interactifs du type "Qui de nous est le plus susceptible de...". Développée avec **Google Apps Script** et **Firebase Realtime Database**, elle fonctionne en temps réel sans serveur backend dédié.
 
 🚀 Pourquoi ce projet est spécial :
@@ -11,10 +15,11 @@
 
 📚 Ce projet m’a permis d’apprendre à développer un jeu en temps réel sur le web, à gérer des connexions multiples et à concevoir une interface interactive sans utiliser de backend lourd.
 
-🧪 L’app est testable en ligne via [Démo Call Out](), et peut être facilement hébergée par n’importe qui en suivant les instructions de ce README.
+🧪 L’app est testable en ligne via [Démo Call Out](https://script.google.com/macros/s/AKfycbzozmc1IhN_cuT7p9ccirAdfpFzP7ho6fqVRQ8WU9yNMrdYGtIWYwvt83eTTrYhM38S/exec), et peut être facilement hébergée par n’importe qui en suivant les instructions de ce README.
 
-<!-- Optionnel: Ajoutez une capture d'écran ici -->
-<!-- ![Screenshot du jeu](lien_vers_votre_screenshot.png) -->
+<p align="center">
+  <img src="screenshots/Splash screen.png" alt="Spalsh Screen"/>
+</p>
 
 ## ✨ Fonctionnalités Principales
 
