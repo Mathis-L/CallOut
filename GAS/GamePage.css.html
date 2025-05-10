@@ -1,0 +1,421 @@
+<style>
+  /* GamePage.css */
+  
+  /* --- Theme Variables --- */
+  :root {
+    --clr-bg: #FDF6E9;
+    --clr-card-bg: #FFFFFF;
+    --clr-text-dark: #4A2F48; /* Dark Purple */
+    --clr-text-light: #FFFFFF;
+    --clr-primary-green: #2A5757; /* Dark Teal */
+    --clr-primary-orange: #F97A3D; /* Orange */
+    --clr-primary-purple: #4A2F48; /* Dark Purple */
+    --clr-accent-light-purple: #DAB6F1;
+    --clr-accent-teal: #5DC0A6;
+    --clr-accent-yellow: #F9D423;
+    --clr-success: var(--clr-accent-teal);
+    --clr-error: #E94F37;
+    --clr-disabled-bg: #DCCFCF;
+    --clr-disabled-text: #9B8B8B;
+    --clr-input-bg: #FAF0E0; /* For backgrounds of elements within cards */
+    --clr-input-border: var(--clr-primary-purple);
+  
+    --font-main: 'Poppins', sans-serif;
+    --radius-card: 20px;
+    --radius-button: 12px;
+    --radius-input: 10px;
+  
+    --shadow-strong: 5px 5px 0px var(--clr-primary-purple);
+    --border-strong: 3px solid var(--clr-primary-purple);
+  
+    --avatar-size-list: 32px;    /* For top player list */
+    --avatar-size-vote: 72px;    /* For voting options */
+    --avatar-size-result: 56px;  /* For result items */
+    --avatar-size-popup: 40px;   /* For coin tosser in popup */
+  }
+  
+  /* --- Base & Global Styles --- */
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: var(--font-main);
+    background-color: var(--clr-bg);
+    color: var(--clr-text-dark);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 15px;
+    min-height: 100vh;
+    line-height: 1.5;
+  }
+  
+  .container {
+    width: 100%;
+    max-width: 600px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 20px;
+  }
+  
+  h1, h2, h3 {
+    text-align: center;
+    font-weight: 700;
+    margin-bottom: 15px;
+    color: var(--clr-primary-purple);
+  }
+  h1 { font-size: 1.8rem; color: var(--clr-primary-green); } /* If used for main page title */
+  h2 { font-size: 1.5rem; } /* For phase titles like "VOTING TIME!" */
+  h3 { font-size: 1.1rem; color: var(--clr-primary-orange); } /* For "Players" in list card */
+  
+  
+  .card {
+    background-color: var(--clr-card-bg);
+    border-radius: var(--radius-card);
+    border: var(--border-strong);
+    box-shadow: var(--shadow-strong);
+    width: 100%;
+    padding: 20px;
+    overflow: hidden; 
+    position: relative;
+  }
+  
+  /* --- General Button Styling (reused from other pages) --- */
+  button {
+    width: 100%;
+    padding: 12px 15px;
+    margin-top: 10px;
+    border: var(--border-strong);
+    border-radius: var(--radius-button);
+    color: var(--clr-text-light);
+    font-family: var(--font-main);
+    font-weight: 700;
+    font-size: 1rem;
+    cursor: pointer;
+    transition: all 0.15s ease-out;
+    box-shadow: var(--shadow-strong);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    display: flex; justify-content: center; align-items: center;
+  }
+  button:hover:not(:disabled) {
+    transform: translateY(-3px) translateX(-3px);
+    box-shadow: 8px 8px 0px var(--clr-primary-purple);
+  }
+  button:active:not(:disabled) {
+    transform: translateY(0px) translateX(0px);
+    box-shadow: var(--shadow-strong);
+  }
+  button:disabled {
+    background-color: var(--clr-disabled-bg) !important; /* Ensure override */
+    color: var(--clr-disabled-text) !important;
+    border-color: color-mix(in srgb, var(--clr-primary-purple) 50%, transparent) !important;
+    box-shadow: 3px 3px 0px color-mix(in srgb, var(--clr-primary-purple) 50%, transparent) !important;
+    cursor: not-allowed;
+    opacity: 0.8;
+  }
+  
+  /* Base Avatar style */
+  .player-avatar {
+    display: block; border-radius: 50%; object-fit: cover;
+    background-color: var(--clr-card-bg); /* Placeholder color */
+    border: 2px solid var(--clr-primary-purple);
+    box-shadow: 2px 2px 0px var(--clr-primary-purple);
+  }
+  
+  
+  /* --- Top Player List Area --- */
+  #player-list-area { padding: 15px; }
+  #player-list-area h3 { margin-bottom: 20px; font-size: 1.2rem; color: var(--clr-text-dark); }
+  
+  #player-list {
+    list-style: none; display: flex; flex-wrap: wrap; gap: 8px; justify-content: center;
+  }
+  #player-list li {
+    padding: 5px 10px; border-radius: var(--radius-button);
+    background-color: var(--clr-input-bg); border: 2px solid var(--clr-primary-purple);
+    display: flex; align-items: center; gap: 6px; font-size: 0.85rem;
+    box-shadow: 2px 2px 0px color-mix(in srgb, var(--clr-primary-purple) 50%, transparent);
+    transition: all 0.2s;
+  }
+  #player-list li .player-avatar {
+    width: var(--avatar-size-list); height: var(--avatar-size-list); border-width: 2px;
+  }
+  #player-list li .player-name-list { font-weight: 600; }
+  #player-list li.disconnected { opacity: 0.6; background-color: var(--clr-disabled-bg); }
+  #player-list li.is-leader .player-name-list::after { content: '👑'; margin-left: 4px; font-size: 0.9em; }
+  #player-list li.is-self {
+    color: var(--clr-primary-purple);
+  }
+  #player-list li.is-self .player-avatar { border-color: var(--clr-primary-orange); }
+  
+  /* Status indicator (dot for ready/voted) */
+  .status-indicator {
+    width: 10px; height: 10px; border-radius: 50%; margin-left: 5px;
+    background: var(--clr-error); border: 1px solid var(--clr-primary-purple);
+    transition: background 0.3s ease;
+  }
+  .status-indicator.ready { background: var(--clr-success); }
+  
+  
+  /* --- Game Content & Phases --- */
+  #game-content { min-height: 350px; display: flex; flex-direction: column; align-items: center; position: relative;}
+  .game-phase { /* Base for all phases */
+    display: block; position: absolute; width: 100%;
+    top: 0; left: 0; opacity: 0; visibility: hidden;
+    transition: opacity 0.4s ease, visibility 0s linear 0.4s;
+    padding: 15px; box-sizing: border-box;
+    display: flex; flex-direction: column; align-items: center; /* Center content */
+  }
+  .game-phase.active {
+    opacity: 1; visibility: visible; position: relative; /* In flow when active */
+    transition: opacity 0.4s ease, visibility 0s linear 0s;
+  }
+  
+  /* Specific Buttons */
+  #leaveGameBtn {
+    background-color: var(--clr-error); color: white;
+    position: absolute; top: 10px; right: 10px;
+    padding: 6px 10px; font-size: 0.8rem; margin: 0; width: auto;
+    z-index: 10; /* Above phase content */
+  }
+  #next-round-btn { background-color: var(--clr-success); width: 100%; max-width: 300px; }
+  #next-round-btn.ready { background-color: var(--clr-primary-green); color: var(--clr-accent-yellow); font-weight: bold; }
+  
+  
+  /* --- Voting Phase --- */
+  #voting-phase h2 { color: var(--clr-primary-orange); text-transform: uppercase; font-size: 1.6rem;}
+  #current-question { 
+    margin-bottom: 20px; font-size: 1.2em; font-weight: 600; text-align: center;
+    padding: 10px; background-color: var(--clr-input-bg); border-radius: var(--radius-input);
+    border: var(--border-strong); border-color: var(--clr-primary-green);
+    box-shadow: var(--shadow-strong);
+    width: 100%;
+  }
+  #player-vote-options { 
+    display: grid;  grid-template-columns: repeat(auto-fit, minmax(100px, 1fr)); 
+    gap: 15px; width: 100%; margin-bottom: 15px; 
+  }
+  .player-vote-btn { /* This is a button element */
+    background-color: var(--clr-card-bg); /* Reset from global button */
+    border: var(--border-strong); border-color: var(--clr-primary-purple);
+    border-radius: var(--radius-button);
+    padding: 10px; display: flex; flex-direction: column; align-items: center; gap: 8px;
+    cursor: pointer; transition: all 0.2s ease;
+    box-shadow: var(--shadow-strong); color: var(--clr-text-dark); /* Reset text color */
+    text-transform: none; letter-spacing: normal; /* Reset from global button */
+  }
+  .player-vote-btn:hover:not(:disabled) {
+    transform: translateY(-3px) translateX(-3px);
+    box-shadow: 8px 8px 0px var(--clr-primary-purple);
+    border-color: var(--clr-primary-orange);
+  }
+  .player-vote-btn .player-avatar {
+    width: var(--avatar-size-vote); height: var(--avatar-size-vote);
+    border-color: var(--clr-primary-purple); margin-bottom: 5px;
+  }
+  .player-vote-btn .player-name-vote { font-weight: 600; font-size: 0.9rem; text-align: center; }
+  
+  .player-vote-btn.voted-for {
+    background-color: var(--clr-accent-yellow)!important;
+    border-color: var(--clr-primary-orange)!important;
+    box-shadow: 5px 5px 0px var(--clr-primary-orange) !important; /* Override hover */
+    transform: scale(1.05);
+  }
+  /* .player-vote-btn.voted-for .player-avatar { border-color: var(--clr-primary-orange); } */
+  .player-vote-btn.target-disconnected { opacity: 0.6; background-color: var(--clr-disabled-bg); }
+  
+  
+  /* --- Results Phase --- */
+  #results-phase h2 { color: var(--clr-success); text-transform: uppercase; font-size: 1.6rem; }
+  #results-display { margin-bottom: 20px; display: flex; flex-direction: column; gap: 15px; width: 100%; }
+  
+  .result-item {
+    display: flex; flex-direction: column; gap: 10px;
+    padding: 15px; background-color: var(--clr-input-bg);
+    border-radius: var(--radius-button); border: var(--border-strong);
+    box-shadow: var(--shadow-strong);
+    opacity: 0; transform: translateX(-20px);
+    transition: opacity 0.4s ease-out, transform 0.4s ease-out;
+  }
+  .result-item.appear { opacity: 1; transform: translateX(0); }
+  
+  .result-score {
+    display: flex; align-items: center; justify-content: space-between; width: 100%;
+  }
+  .result-score-player { display: flex; align-items: center; gap: 10px; }
+  .result-item .player-avatar { /* Avatar in result */
+    width: var(--avatar-size-result); height: var(--avatar-size-result);
+  }
+  .result-score .player-name-result { font-weight: 700; font-size: 1.2em; }
+  .result-score .player-vote-count {
+    font-weight: 800; font-size: 1.3em; color: var(--clr-primary-orange);
+    background-color: var(--clr-accent-yellow); padding: 2px 8px; border-radius: var(--radius-input);
+    border: 2px solid var(--clr-primary-purple);
+  }
+  .result-item.disconnected-result { opacity: 0.7; background-color: var(--clr-disabled-bg); }
+  
+  /* Vote Bar */
+  .vote-bar-container {
+    width: 100%; height: 12px; background-color: color-mix(in srgb, var(--clr-primary-purple) 20%, transparent);
+    border-radius: 6px; overflow: hidden; border: 2px solid var(--clr-primary-purple);
+  }
+  .vote-bar-fill {
+    height: 100%; width: 0%; background-color: var(--clr-primary-orange);
+    border-radius: 4px; transition: width 1.2s cubic-bezier(0.25, 1, 0.5, 1);
+  }
+  
+  /* Coin Toss Section in Result Item */
+  .coin-toss-section {
+    min-height: 30px; display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    margin-top: 5px;
+  }
+  .coin-toss-status {
+    font-style: italic; color: var(--clr-primary-purple); font-size: 0.95em; font-weight: 500;
+  }
+  .toss-trigger-button { /* Button for player to click "Toss" */
+    background-color: var(--clr-accent-light-purple); color: var(--clr-primary-purple);
+    padding: 8px 12px; font-size: 0.9em; width: auto; margin-top: 0;
+    border-color: var(--clr-primary-purple);
+    box-shadow: 3px 3px 0px var(--clr-primary-purple);
+  }
+  .toss-trigger-button:hover:not(:disabled) {
+      background-color: color-mix(in srgb, var(--clr-accent-light-purple) 90%, black 5%);
+      box-shadow: 5px 5px 0px var(--clr-primary-purple); transform: translateY(-2px) translateX(-2px);
+  }
+  
+  
+  /* Revealed Votes Section */
+  .revealed-votes {
+    padding: 10px; background-color: color-mix(in srgb, var(--clr-accent-teal) 20%, var(--clr-card-bg));
+    border-radius: var(--radius-input); font-size: 0.85em; display: none; /* Shown by JS */
+    margin-top: 8px; border: 2px dashed var(--clr-accent-teal);
+  }
+  .revealed-votes h6 { font-size: 0.95em; margin-bottom: 5px; color: var(--clr-primary-green); font-weight: 700; }
+  .revealed-votes ul { list-style-type: none; padding-left: 0; margin: 0; }
+  .revealed-votes li { 
+    padding: 3px 0; border-bottom: 1px dotted color-mix(in srgb, var(--clr-accent-teal) 50%, transparent);
+    font-weight: 500;
+  }
+  .revealed-votes li:last-child { border-bottom: none; }
+  .revealed-votes strong { color: var(--clr-primary-orange); } /* Voter name */
+  .revealed-votes i { color: var(--clr-disabled-text); } /* "secret votes" message */
+  
+  
+  /* --- Waiting Area & Messages --- */
+  #waiting-area h2 { color: var(--clr-primary-green); }
+  .status-message { /* General status like "Choose a player", "Waiting for others" */
+    margin-top: 10px; font-style: italic; font-weight: 500;
+    color: var(--clr-primary-purple); text-align: center; font-size: 0.95rem;
+  }
+  #pause-message {
+    display: none; margin-top: 15px; padding: 12px;
+    border: 3px dashed var(--clr-primary-orange); background-color: var(--clr-input-bg);
+    color: var(--clr-primary-orange); border-radius: var(--radius-button);
+    text-align: center; font-weight: 600;
+  }
+  .loader { /* General loader for waiting phase */
+    width: 45px; height: 45px;
+    border: 5px solid var(--clr-input-bg);
+    border-top: 5px solid var(--clr-primary-orange);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    margin: 20px auto;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  
+  /* --- Coin Toss Popup --- */
+  .popup-overlay {
+    position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+    background: color-mix(in srgb, var(--clr-primary-purple) 70%, transparent);
+    display: flex; justify-content: center; align-items: center;
+    z-index: 1000; opacity: 0; visibility: hidden;
+    transition: opacity 0.3s ease, visibility 0s linear 0.3s;
+    padding: 15px;
+  }
+  .popup-overlay.visible {
+    opacity: 1; visibility: visible;
+    transition: opacity 0.3s ease, visibility 0s linear 0s;
+  }
+  
+  .popup-content {
+    display: flex; flex-direction: column; align-items: center;
+    background: var(--clr-card-bg); padding: 25px 30px;
+    border-radius: var(--radius-card); border: var(--border-strong);
+    box-shadow: var(--shadow-strong), 0 0 30px rgba(0,0,0,0.3); /* Extra shadow for popup */
+    text-align: center; transform: scale(0.9); transition: transform 0.3s ease;
+    max-width: 380px; width: 100%;
+  }
+  .popup-overlay.visible .popup-content { transform: scale(1); }
+  
+  #popup-tosser-name {
+    font-size: 1.3em; font-weight: 700; color: var(--clr-text-dark);
+    margin-bottom: 15px; display: flex; align-items: center; justify-content: center; gap: 10px;
+  }
+  #popup-tosser-name img.player-avatar-popup { /* Avatar of tosser in popup */
+    width: var(--avatar-size-popup); height: var(--avatar-size-popup);
+    border-color: var(--clr-primary-orange);
+  }
+  #popup-tosser-name strong { color: var(--clr-primary-orange); } /* Highlight tosser's name */
+  
+  .popup-status { /* "Tossing...", "Result: Heads!" */
+    font-size: 1.1em; font-weight: 600; color: var(--clr-primary-green);
+    margin-top: 15px; min-height: 1.3em;
+  }
+  
+  /* Coin Animation in Popup */
+  .coin-animation-spot-popup {
+    height: 100px; width: 150px; /* Generous space */
+    position: relative; display: flex; justify-content: center; align-items: center;
+    margin: 20px 0; perspective: 800px; /* Deeper perspective */
+  }
+  .coin-animation-spot-popup .coin {
+    position: absolute; width: 70px; height: 70px; /* Larger coin */
+    transform-style: preserve-3d; transform-origin: center center;
+    border-radius: 50%; transform: rotateX(45deg); /* Initial slant */
+  }
+  .coin-animation-spot-popup .coin.animate {
+    animation: game-spin-popup 1.5s cubic-bezier(0.65, 0.05, 0.36, 1);
+  }
+  .coin-animation-spot-popup .coin .head,
+  .coin-animation-spot-popup .coin .tail {
+    position: absolute; width: 100%; height: 100%;
+    color: var(--clr-primary-purple); font-size: 2.2rem; font-weight: 900;
+    display: flex; align-items: center; justify-content: center;
+    border-radius: 50%; backface-visibility: hidden;
+    font-family: var(--font-main);
+    text-shadow: 1px 1px 0px rgba(255,255,255,0.3);
+  }
+  .coin-animation-spot-popup .coin .head { /* "FACE" side */
+    background: radial-gradient(ellipse at center, var(--clr-accent-teal) 60%, var(--clr-primary-green) 100%);
+    border: 4px solid var(--clr-primary-green);
+  }
+  
+  .coin-animation-spot-popup .coin .tail { /* "PILE" side */
+    transform: rotateX(180deg);
+    background: radial-gradient(ellipse at center, var(--clr-accent-yellow) 60%, var(--clr-primary-orange) 100%);
+    border: 4px solid var(--clr-primary-orange);
+  }
+  
+  @keyframes game-spin-popup {
+    0% { top: 0; transform: rotateX(45deg) rotateZ(0deg); }
+    50% { transform: rotateX(1845deg) rotateZ(20deg); top: -60px; } /* Higher and more spin */
+    100% { top: 0; /* Final position set by JS after animation */ }
+  }
+  
+  /* Responsive adjustments for game page */
+  @media (max-width: 480px) {
+    body { padding: 10px; }
+    .container { gap: 15px; }
+    .card { padding: 15px; }
+    h2 { font-size: 1.3rem; }
+    #current-question { font-size: 1.1em; }
+    .player-vote-btn .player-avatar { width: 60px; height: 60px; }
+    .result-item .player-avatar { width: 48px; height: 48px; }
+    .result-score .player-name-result { font-size: 1.1em; }
+    .result-score .player-vote-count { font-size: 1.1em; }
+    .popup-content { padding: 20px; }
+    #popup-tosser-name { font-size: 1.1em; }
+    .coin-animation-spot-popup .coin { width: 60px; height: 60px; }
+    .coin-animation-spot-popup .coin .head, .coin-animation-spot-popup .coin .tail { font-size: 1.8rem; }
+  }
+  </style>

@@ -1,0 +1,1095 @@
+<script>
+    /**
+     * @file GamePage.js
+     * This file contains the client-side JavaScript logic for the game page of a multiplayer game.
+     * It handles Firebase real-time database interactions, game state management, UI updates,
+     * player interactions (voting, coin toss), and navigation.
+     *
+     * Global constants like firebaseConfig, gameId, currentUserId, currentUserPseudo are expected
+     * to be defined in the GamePage.html file (e.g., via server-side templating or a script tag).
+     */
+    
+    // --- GLOBAL CONSTANTS (defined in GamePage.html) ---
+    // firebaseConfig, gameId, currentUserId, currentUserPseudo
+    
+    // --- Local Constants ---
+    const MIN_CONNECTED_PLAYERS_TO_PROCEED = 2;
+    const COIN_TOSS_ANIMATION_DURATION = 1500; // ms (durée de l'anim CSS)
+    const POPUP_CLOSE_DELAY = 1500; // ms (temps APRES anim avant fermeture popup)
+    const WRITE_RESULT_DELAY = 1300; // ms (Délai AVANT fin anim pour écriture DB par lanceur)
+    
+    // --- Firebase References ---
+    let firebaseApp;
+    let database;
+    let gameRef;
+    let playersRef;
+    let currentPlayerRef;
+    let gameStateRef;
+    
+    // --- DOM Elements ---
+    let playerListElement;
+    let gameContent;
+    let votingPhaseDiv;
+    let resultsPhaseDiv;
+    let waitingAreaDiv;
+    let currentQuestionElement;
+    let playerVoteOptionsDiv;
+    let voteStatusElement;
+    let resultsDisplayDiv; 
+    let nextRoundBtn;
+    let readyStatusElement;
+    let leaveGameBtn;
+    let waitingMessage;
+    let pauseMessageElement;
+    let coinTossPopup;
+    let popupTosserNameElement;
+    let popupCoinElement;
+    let popupStatusElement;
+    
+    
+    // --- Local State Variables ---
+    let localPlayersData = {};
+    let localGameState = {};
+    let isLeader = false;
+    let leaderId = null;
+    let hasVotedThisRound = false;
+    let isReadyForNext = false;
+    let gameStatusListener = null;
+    let playersListener = null;
+    let connectedPlayersCount = 0;
+    let isPopupVisible = false;
+    let activeTossTimeoutId = null; 
+    let popupCloseTimerId = null; 
+    let lastDisplayedTosserId = null; 
+    let resultsAnimationPlayedForRound = null;
+    
+    
+    // An object to easily access question lists by their name. In "Questions.html"
+    const questionSets = {
+      gentle: gentleQuestions,
+      mix: mixQuestions,
+      extreme: extremeQuestions
+    };
+    
+    //  Stores the name of the active question set for this game. Default is 'mix', will be overridden by Firebase value. 
+    let currentGameQuestionSet = 'mix'; // Default, will be overridden by Firebase value
+    let usedQuestionsIndices = new Set();
+    
+    // --- Utility Functions ---
+    
+    /**
+     * Gets a random question from the currently active question set, avoiding repetitions.
+     * Resets used questions if all questions in the set have been used.
+     * @returns {string} A random question string, or an error message if no questions are available.
+     */
+    
+    function getRandomQuestion() {
+      // Select the correct array of questions based on the global/scope variable
+        const activeQuestions = questionSets[currentGameQuestionSet] || questionSets['mix']; // Fallback sur mix
+    
+        if (!activeQuestions || activeQuestions.length === 0) {
+             console.error(`Set de questions '${currentGameQuestionSet}' vide ou introuvable!`);
+             return "Erreur: Pas de questions disponibles.";
+        }
+    
+        // Logic to avoid repetitions must operate on the active set
+        if (usedQuestionsIndices.size >= activeQuestions.length) {
+            console.log(`Toutes les questions du set '${currentGameQuestionSet}' ont été utilisées. Réinitialisation.`);
+            usedQuestionsIndices.clear();
+        }
+    
+        let index;
+        do {
+            index = Math.floor(Math.random() * activeQuestions.length);
+        } while (usedQuestionsIndices.has(index));
+    
+        usedQuestionsIndices.add(index);
+        return activeQuestions[index]; // Retourner la question du set actif
+    }
+    
+    /**
+     * Asynchronously gets the web application's base URL.
+     * Prefers Google Apps Script URL if available, otherwise falls back to window.location.
+     * @returns {Promise<string>} A promise that resolves with the base URL.
+     */
+    function getWebAppUrl() {
+        return new Promise((resolve, reject) => {
+            if (typeof google !== 'undefined' && google.script && google.script.run) {
+                google.script.run
+                    .withSuccessHandler(resolve)
+                    .withFailureHandler(reject)
+                    .getScriptUrl();
+            } else {
+                console.warn("Contexte GAS non disponible, utilisation de l'origine.");
+                resolve(window.location.origin + window.location.pathname);
+            }
+        });
+    }
+    
+    // --- FIREBASE LISTENERS & ON_DISCONNECT MANAGEMENT ---
+    
+    /**
+     * Cleans up Firebase listeners and onDisconnect handlers.
+     * Also clears any active timeouts related to coin toss.
+     */
+     function cleanupListenersAndDisconnect() {
+        console.log("Cleanup: Annulation des listeners et de onDisconnect...");
+        if (gameRef && gameStatusListener) gameRef.off('value', gameStatusListener);
+        if (playersRef && playersListener) playersRef.off('value', playersListener);
+        gameStatusListener = null;
+        playersListener = null;
+    
+        if (activeTossTimeoutId) clearTimeout(activeTossTimeoutId);
+        if (popupCloseTimerId) clearTimeout(popupCloseTimerId);
+        activeTossTimeoutId = null;
+        popupCloseTimerId = null;
+        console.log("Timeouts nettoyés.");
+    
+        if (currentPlayerRef) {
+            currentPlayerRef.onDisconnect().cancel().catch(err => console.warn("Erreur cancel onDisconnect:", err));
+        }
+    }
+    
+    /**
+     * Attaches Firebase listeners for game state and player list changes.
+     * Handles scenarios where the game ends or the current player is removed.
+     */
+    function attachFirebaseListeners() {
+        console.log("Attachement des listeners Firebase...");
+        if (!gameRef || !playersRef) {
+            console.error("Refs Firebase non valides.");
+            return;
+        }
+    
+        // --- Listener on global game state ---
+        gameStatusListener = gameRef.on('value', (snapshot) => {
+            console.log("Listener gameRef: Données reçues.");
+            if (!snapshot.exists()) {
+                if (gameStatusListener) {
+                    console.log("Partie terminée (ref inexistante).");
+                    alert(`La partie ${gameId} a été terminée.`);
+                    cleanupListenersAndDisconnect();
+                    getWebAppUrl().then(baseUrl => window.top.location.href = `${baseUrl}?page=home&message=${encodeURIComponent(`Partie ${gameId} terminée.`)}`).catch(() => window.top.location.href = window.location.origin);
+                }
+                return;
+            }
+    
+            const gameData = snapshot.val();
+            const previousGameState = {...localGameState}; // Copie de l'état précédent
+            localGameState = gameData.currentGame || {};
+            leaderId = gameData.leaderId;
+            isLeader = (currentUserId === leaderId);
+    
+            currentGameQuestionSet = gameData.selectedQuestionSet || 'mix';
+            console.log(`Utilisation du set de questions: ${currentGameQuestionSet}`);
+    
+            console.log(`Phase=${localGameState.phase}, Leader=${leaderId}, ActiveToss?`, !!localGameState.activeToss);
+    
+            updateGameUIAndState(previousGameState); // Passer l'état précédent
+    
+        }, (error) => {
+            console.error("Erreur listener gameRef:", error);
+            alert("Erreur connexion serveur jeu.");
+        });
+    
+        // --- Listener on player list ---
+        playersListener = playersRef.on('value', (snapshot) => {
+            console.log("Listener playersRef: Données reçues.");
+            localPlayersData = snapshot.exists() ? snapshot.val() : {};
+    
+            if (!localPlayersData[currentUserId] && playersListener) {
+                 console.log("Joueur actuel retiré.");
+                 alert("Vous avez été retiré de la partie.");
+                 cleanupListenersAndDisconnect();
+                 getWebAppUrl().then(baseUrl => window.top.location.href = `${baseUrl}?page=home&message=${encodeURIComponent(`Retiré de la partie ${gameId}.`)}`).catch(() => window.top.location.href = window.location.origin);
+                 return;
+            }
+    
+            updateGameUIAndState(); // Simple update without previous state
+    
+        }, (error) => {
+            console.error("Erreur listener playersRef:", error);
+            alert("Erreur connexion liste joueurs.");
+        });
+    }
+    
+    
+    // --- UI Functions ---
+    
+    /**
+     * Updates the player list UI based on `localPlayersData`.
+     * Displays player names, avatars, connection status, leader status, and self-highlighting.
+     * Also shows a status indicator (e.g., if they've voted or are ready).
+     */
+     function updatePlayerListUI() {
+        if (!playerListElement) return;
+        playerListElement.innerHTML = '';
+    
+        if (!localPlayersData || Object.keys(localPlayersData).length === 0) {
+            playerListElement.innerHTML = '<li class="loading">Aucun joueur...</li>';
+            return;
+        }
+    
+        const phase = localGameState?.phase;
+        const votes = localGameState?.votes || {};
+        const readyForNext = localGameState?.readyForNextRound || {};
+    
+        Object.entries(localPlayersData).forEach(([id, player]) => {
+            const li = document.createElement('li');
+            
+            li.dataset.userId = id;
+            const isConnected = player.isConnected === true;
+    
+             // Add Avatar Image
+             if (player.avatarSrc) {
+                 const img = document.createElement('img');
+                 img.src = player.avatarSrc;
+                 img.alt = "Avatar";
+                 img.classList.add('player-avatar');
+                 li.appendChild(img);
+             }
+    
+            const nameSpan = document.createElement('span');
+            nameSpan.classList.add('player-name-list');
+            nameSpan.textContent = player.pseudo || 'Joueur anonyme';
+            li.appendChild(nameSpan); // Append name after avatar
+    
+            if (!isConnected) li.classList.add('disconnected');
+            if (id === leaderId) li.classList.add('is-leader');
+            if (id === currentUserId) li.classList.add('is-self');
+    
+            const statusIndicator = document.createElement('span');
+            statusIndicator.className = 'status-indicator';
+            if (isConnected) {
+                let isPlayerReadyOrVoted = false;
+                if (phase === 'voting' && votes[id]) isPlayerReadyOrVoted = true;
+                else if (phase === 'results' && readyForNext[id]) isPlayerReadyOrVoted = true;
+                if (isPlayerReadyOrVoted) statusIndicator.classList.add('ready');
+            }
+            li.appendChild(statusIndicator);
+            playerListElement.appendChild(li);
+        });
+    }
+    
+    /**
+     * Shows the specified game phase UI and hides others.
+     * Manages visibility of voting, results, and waiting areas.
+     * Also handles the display of the pause message.
+     * @param {string} phaseToShow - The name of the phase to display (e.g., 'voting', 'results', 'waiting').
+     */
+    function showPhase(phaseToShow) {
+        console.log("Affichage de la phase:", phaseToShow);
+        const phases = [votingPhaseDiv, resultsPhaseDiv, waitingAreaDiv]; // Put all phase divs here
+    
+        phases.forEach(phaseDiv => {
+            if (phaseDiv) {
+                const targetId = `${phaseToShow}-phase`; // ou -area pour waiting
+                const isTargetPhase = phaseDiv.id === targetId || (phaseToShow === 'waiting' && phaseDiv.id === 'waiting-area');
+    
+                if (isTargetPhase) {
+                    phaseDiv.classList.add('active');
+                } else {
+                    phaseDiv.classList.remove('active');
+                }
+            } else {
+                 console.warn("Une des divs de phase n'a pas été trouvée lors du showPhase");
+            }
+        });
+    
+        // Gérer le message de pause séparément
+        pauseMessageElement.style.display = localGameState.isPaused ? 'block' : 'none'; // Assumer un état isPaused
+    
+        // Si l'élément à afficher n'est pas trouvé, afficher l'attente comme fallback
+        const elementToShow = document.getElementById(`${phaseToShow}-phase`) || document.getElementById(`${phaseToShow}-area`);
+        if (!elementToShow) {
+            console.warn("Phase inconnue:", phaseToShow);
+             if (waitingAreaDiv) waitingAreaDiv.classList.add('active');
+             if (waitingMessage) waitingMessage.textContent = "État inconnu...";
+        }
+    }
+    
+    /**
+     * Renders the UI for the voting phase.
+     * Displays the current question and voting options (other players).
+     * Disables voting if the current player has already voted.
+     * Updates vote status message.
+     */
+    function renderVotingPhase() {
+        currentQuestionElement.textContent = localGameState.question || "Chargement...";
+        playerVoteOptionsDiv.innerHTML = '';
+        hasVotedThisRound = !!(localGameState.votes && localGameState.votes[currentUserId]);
+        const myVoteTargetId = localGameState.votes?.[currentUserId];
+    
+        Object.entries(localPlayersData).forEach(([id, player]) => {
+             if (id === currentUserId) return;
+            const isTargetConnected = player.isConnected === true;
+            const btn = document.createElement('button');
+            btn.classList.add('player-vote-btn');
+            btn.dataset.targetUserId = id;
+    
+            // Add Avatar Image 
+            if (player.avatarSrc) {
+                const img = document.createElement('img');
+                img.src = player.avatarSrc;
+                img.alt = "Avatar";
+                img.classList.add('player-avatar');
+                btn.appendChild(img);
+            }
+    
+            const nameSpan = document.createElement('span'); // Wrap name
+            nameSpan.classList.add('player-name-vote');
+            nameSpan.textContent = player.pseudo || 'Inconnu';
+            if (!isTargetConnected) {
+               btn.classList.add('target-disconnected');
+               nameSpan.textContent += " (Déco)"; // Add status to name span
+            }
+            btn.appendChild(nameSpan); // Append name after avatar
+    
+            btn.disabled = hasVotedThisRound;
+            if (hasVotedThisRound && myVoteTargetId === id) { btn.classList.add('voted-for'); }
+            btn.addEventListener('click', handleVoteClick);
+            playerVoteOptionsDiv.appendChild(btn);
+        });
+    
+        const votes = localGameState.votes || {};
+        const connectedVotesCount = Object.keys(votes).filter(id => localPlayersData[id]?.isConnected).length;
+        if (hasVotedThisRound) {
+            const votedForPseudo = localPlayersData[myVoteTargetId]?.pseudo || 'un joueur';
+            const remainingVotes = Math.max(0, connectedPlayersCount - connectedVotesCount);
+            voteStatusElement.textContent = `Vous avez voté pour ${votedForPseudo}. Attente de ${remainingVotes} vote(s)...`;
+        } else {
+            voteStatusElement.textContent = `Votez ! ${connectedVotesCount} / ${connectedPlayersCount} joueurs connectés ont voté.`;
+        }
+    }
+    
+    /**
+     * Renders the UI for the results phase.
+     * Displays vote counts for each player, vote bars, and coin toss sections.
+     * Handles animation for result items on first appearance for the round.
+     * Shows revealed votes if applicable after a coin toss.
+     * Manages the "Ready for next round" button and status.
+     */
+    function renderResultsPhase() {
+        resultsDisplayDiv.innerHTML = '';
+        const results = localGameState.results || {};
+        const readyForNext = localGameState.readyForNextRound || {};
+        const coinTossesData = localGameState.coinTosses || {};
+        const activeToss = localGameState.activeToss;
+        isReadyForNext = !!readyForNext[currentUserId];
+    
+    
+        const currentRound = localGameState.round; // Récupérer le numéro de la manche actuelle
+        const playAnimation = resultsAnimationPlayedForRound !== currentRound;
+    
+        if (playAnimation) {
+            console.log(`Première apparition des résultats pour la manche ${currentRound}. Animation !`);
+            resultsAnimationPlayedForRound = currentRound; // Marquer comme jouée pour cette manche
+        }
+    
+        if (Object.keys(results).length === 0) {
+            resultsDisplayDiv.innerHTML = '<p>Aucun vote enregistré.</p>';
+            if (playAnimation) resultsAnimationPlayedForRound = currentRound;
+        } else {
+            const sortedResults = Object.entries(results).sort(([, a], [, b]) => b - a);
+            let maxVotes = 0;
+            sortedResults.forEach(([, count]) => {
+                if (count > maxVotes) {
+                    maxVotes = count;
+                }
+            });
+            const voteScale = maxVotes > 0 ? maxVotes : 1;
+            const animationDelayIncrement = 1000; // ms entre chaque apparition
+    
+            sortedResults.forEach(([playerId, count], index) => {
+                const player = localPlayersData[playerId];
+                if (!player) return;
+    
+                const resultItemDiv = document.createElement('div');
+                resultItemDiv.className = 'result-item';
+                resultItemDiv.dataset.playerId = playerId;
+                if (!player.isConnected) resultItemDiv.classList.add('disconnected-result');
+    
+                // Score
+                 const scoreDiv = document.createElement('div');
+                scoreDiv.className = 'result-score';
+    
+                const scorePlayer = document.createElement('div');
+                scorePlayer.className = 'result-score-player';
+    
+                if (player.avatarSrc) {
+                  const img = document.createElement('img');
+                  img.src = player.avatarSrc;
+                  img.alt = "Avatar";
+                  img.classList.add('player-avatar');
+                  scorePlayer.appendChild(img); // Add image first in score div
+              }
+                const nameSpan = document.createElement('span');
+                nameSpan.className = 'player-name-result';
+                nameSpan.textContent = player.pseudo || 'Inconnu';
+                if (!player.isConnected) nameSpan.textContent += " (Déco)";
+                const countStrong = document.createElement('strong');
+                countStrong.classList.add('player-vote-count');
+                countStrong.textContent = `${count} vote${count > 1 ? 's' : ''}`;
+                scorePlayer.appendChild(nameSpan);
+                scoreDiv.appendChild(scorePlayer);
+                scoreDiv.appendChild(countStrong);
+                resultItemDiv.appendChild(scoreDiv);
+    
+                // Barre de vote
+                const voteBarContainer = document.createElement('div');
+                voteBarContainer.className = 'vote-bar-container';
+                const voteBarFill = document.createElement('div');
+                voteBarFill.className = 'vote-bar-fill';
+                const barWidthPercentage = (count / voteScale) * 100;
+    
+                voteBarContainer.appendChild(voteBarFill);
+                resultItemDiv.appendChild(voteBarContainer);
+    
+                // Toss Section
+                if (count > 0) {
+                    const tossSectionDiv = document.createElement('div'); tossSectionDiv.className = 'coin-toss-section';
+                    const statusSpan = document.createElement('span'); statusSpan.className = 'coin-toss-status';
+                    const tossData = coinTossesData[playerId];
+                    let canToss = (currentUserId === playerId && !tossData && !activeToss);
+    
+                    if (tossData) {
+                        statusSpan.textContent = `Résultat : ${tossData.result === 'HEADS' ? 'FACE !' : 'PILE !'}`;
+                    } else if (activeToss) {
+                         statusSpan.textContent = activeToss.tossingPlayerId === playerId ? "Lancement..." : `Attente lancer de ${activeToss.tossingPlayerPseudo}...`;
+                    } else {
+                        statusSpan.textContent = (currentUserId === playerId) ? "Prêt à lancer ?" : "En attente du lancer...";
+                    }
+                    tossSectionDiv.appendChild(statusSpan);
+    
+                    if (canToss) {
+                        const tossBtn = document.createElement('button'); tossBtn.className = 'toss-trigger-button'; tossBtn.dataset.targetPlayerId = playerId; tossBtn.textContent = 'Lancer';
+                        tossSectionDiv.appendChild(tossBtn);
+                    }
+                    resultItemDiv.appendChild(tossSectionDiv);
+    
+                    // Revealed Votes
+                    if (tossData && tossData.revealVotes) {
+                        const revealedDiv = document.createElement('div'); revealedDiv.className = 'revealed-votes';
+                        const ul = document.createElement('ul'); const votes = localGameState.votes || {}; let revealedCount = 0;
+                        Object.entries(votes).forEach(([voterId, votedId]) => {
+                            if (votedId === playerId) {
+                                const voter = localPlayersData[voterId]; const voterName = voter?.pseudo || 'Joueur parti';
+                                const li = document.createElement('li'); li.innerHTML = `Votant : <strong>${voterName}</strong> ${!voter?.isConnected ? '(Déco)' : ''}`;
+                                ul.appendChild(li); revealedCount++;
+                            }
+                        });
+                        revealedDiv.innerHTML = `<h6>Votes révélés :</h6>`;
+                        if (revealedCount > 0) revealedDiv.appendChild(ul); else revealedDiv.innerHTML += `<i>Personne n'a voté pour ${player.pseudo}.</i>`;
+                        revealedDiv.style.display = 'block'; resultItemDiv.appendChild(revealedDiv);
+                    } else if (tossData && !tossData.revealVotes) {
+                        const revealedDiv = document.createElement('div'); revealedDiv.className = 'revealed-votes';
+                        revealedDiv.innerHTML = `<h6>Résultat :</h6><i>Les votes restent secrets (Pile) !</i>`;
+                        revealedDiv.style.display = 'block'; resultItemDiv.appendChild(revealedDiv);
+                    }
+                }
+                resultsDisplayDiv.appendChild(resultItemDiv);
+                if (playAnimation) {
+                    // Cas 1: Première apparition -> Animation
+                    // L'item est créé avec opacity 0 par CSS par défaut
+                    const currentDelay = index * animationDelayIncrement;
+                    setTimeout(() => {
+                        resultItemDiv.classList.add('appear'); // Déclenche l'animation d'apparition
+                        // Animer la barre de vote peu après
+                        setTimeout(() => {
+                            voteBarFill.style.width = `${barWidthPercentage}%`;
+                        }, 100);
+                    }, currentDelay);
+                } else {
+                    // Cas 2: Mise à jour -> Affichage immédiat sans animation
+                    // On force l'état visible immédiatement
+                    resultItemDiv.style.opacity = 1;
+                    resultItemDiv.style.transform = 'translateY(0)';
+                    // Appliquer la largeur de la barre directement (la transition CSS sur la barre jouera si la largeur change)
+                    voteBarFill.style.width = `${barWidthPercentage}%`;
+                }
+            });
+        }
+    
+        // Ready Button
+        nextRoundBtn.disabled = isReadyForNext;
+        nextRoundBtn.textContent = isReadyForNext ? "Prêt !" : "Prêt pour la prochaine manche";
+        nextRoundBtn.classList.toggle('ready', isReadyForNext);
+        const connectedReadyCount = Object.keys(readyForNext).filter(id => localPlayersData[id]?.isConnected).length;
+        readyStatusElement.textContent = `${connectedReadyCount} / ${connectedPlayersCount} joueurs connectés prêts.`;
+    }
+    
+    // --- Coin Toss Popup Functions ---
+    
+    /**
+     * Displays the coin toss popup, starts the animation, and sets a timer for automatic closing.
+     * Shows the tosser's avatar and name.
+     * @param {string} tosserId The ID of the player tossing the coin.
+     * @param {string} tosserPseudo The pseudo of the player tossing the coin.
+     */
+    function showCoinTossPopup(tosserId, tosserPseudo) {
+        if (!coinTossPopup || isPopupVisible) {
+            // Si déjà visible, peut-être mettre à jour le nom si c'est un autre lanceur ? Rare.
+            if (isPopupVisible && lastDisplayedTosserId !== tosserId) {
+                 popupTosserNameElement.innerHTML = `<strong>${tosserPseudo}</strong> lance la pièce...`;
+                 lastDisplayedTosserId = tosserId;
+            }
+            return;
+        }
+        console.log(`Affichage popup pour ${tosserPseudo} (ID: ${tosserId})`);
+        lastDisplayedTosserId = tosserId; // Stocker qui est affiché
+    
+        // --- NEW: Display Avatar in Popup ---
+        popupTosserNameElement.innerHTML = ''; // Clear previous content
+        const tosserData = localPlayersData[tosserId];
+        if (tosserData && tosserData.avatarSrc) {
+            const img = document.createElement('img');
+            img.src = tosserData.avatarSrc;
+            img.alt = "Avatar";
+            img.classList.add('player-avatar-popup'); // Use specific class
+            popupTosserNameElement.appendChild(img);
+        }
+        const nameText = document.createElement('span'); // Add name text separately
+        nameText.innerHTML = `<strong>${tosserPseudo}</strong> lance la pièce...`;
+        popupTosserNameElement.appendChild(nameText);
+        // ----------------------------------
+        popupStatusElement.textContent = "Lancement en cours...";
+        popupCoinElement.style.transform = 'rotateX(45deg)'; // Reset position
+        popupCoinElement.style.display = 'block';
+        popupCoinElement.classList.remove('animate');
+        void popupCoinElement.offsetWidth; // Force reflow
+        popupCoinElement.classList.add('animate');
+        coinTossPopup.classList.add('visible');
+        isPopupVisible = true;
+    
+        // Planifier la fermeture automatique
+        clearTimeout(popupCloseTimerId); // Annuler ancien timer si existant
+        popupCloseTimerId = setTimeout(hideCoinTossPopup, COIN_TOSS_ANIMATION_DURATION + POPUP_CLOSE_DELAY);
+        console.log(`Popup se fermera dans ${COIN_TOSS_ANIMATION_DURATION + POPUP_CLOSE_DELAY}ms`);
+    }
+    
+    /**
+     * Hides the coin toss popup.
+     * Clears associated timers and resets state.
+     */
+    function hideCoinTossPopup() {
+        if (!isPopupVisible) return;
+        console.log("Fermeture popup lancer.");
+    
+        clearTimeout(popupCloseTimerId); // Annuler le timer
+        popupCloseTimerId = null;
+        lastDisplayedTosserId = null; // Oublier qui était affiché
+    
+        popupCoinElement.classList.remove('animate');
+        coinTossPopup.classList.remove('visible');
+        // Délai pour transition CSS avant de cacher complètement
+        setTimeout(() => {
+            if (!coinTossPopup.classList.contains('visible')) {
+                 popupCoinElement.style.display = 'none';
+            }
+        }, 300);
+        isPopupVisible = false;
+    }
+    
+    /**
+     * Updates the content of the popup to display the final coin toss result.
+     * Stops the animation and fixes the coin on Heads or Tails.
+     * @param {string} resultText The text of the result (e.g., "Result: TAILS!").
+     * @param {('HEADS'|'TAILS')} result - The actual result ('HEADS' or 'TAILS').
+     */
+    function updatePopupWithFinalResult(resultText, result) {
+        if (isPopupVisible) {
+            console.log(`Popup: Affichage résultat final: ${resultText}`);
+            popupStatusElement.textContent = resultText;
+            popupCoinElement.classList.remove('animate'); // Stopper l'animation CSS
+    
+            // Forcer la position finale immédiatement
+            const finalRotation = result === 'HEADS' ? 'rotateX(45deg)' : 'rotateX(225deg)';
+            popupCoinElement.style.transform = finalRotation;
+        } else {
+            console.warn("Tentative d'afficher résultat final dans popup non visible.");
+        }
+    }
+    
+    
+    // --- User Event Handlers ---
+    
+    /**
+     * Handles voluntary leaving of the game by the current user.
+     * If the leader leaves, the game is removed from Firebase.
+     * Otherwise, only the player is removed. Redirects to home page.
+     * @async
+     */
+    async function leaveGameVoluntarily() { 
+        const iAmLeader = (currentUserId === leaderId);
+        console.log(`Clic sur 'Quitter'. ${iAmLeader ? "Leader." : "Joueur."}`);
+        leaveGameBtn.disabled = true;
+        leaveGameBtn.textContent = "Déconnexion...";
+    
+        cleanupListenersAndDisconnect(); // Nettoyer d'abord
+    
+        try {
+            let redirectMessage = `Vous avez quitté la partie ${gameId}.`;
+            if (iAmLeader) {
+                console.log("Leader quitte. Suppression partie...");
+                if (gameRef) {
+                    await gameRef.remove();
+                    redirectMessage = `Partie ${gameId} terminée (leader parti).`;
+                }
+            } else {
+                console.log("Joueur quitte.");
+                if (currentPlayerRef) {
+                    await currentPlayerRef.remove();
+                }
+            }
+            const baseUrl = await getWebAppUrl();
+            window.top.location.href = `${baseUrl}?page=home&message=${encodeURIComponent(redirectMessage)}`;
+        } catch (error) {
+            console.error("Erreur en quittant:", error);
+            alert("Erreur en quittant la partie.");
+            leaveGameBtn.disabled = false; // Réactiver si erreur
+            leaveGameBtn.textContent = "Quitter";
+             // Tentative de redirection même si erreur DB
+             try {
+                 const baseUrl = await getWebAppUrl();
+                 window.top.location.href = `${baseUrl}?page=home&error=${encodeURIComponent("Erreur en quittant.")}`;
+             } catch(e){ window.top.location.href = window.location.origin; }
+        }
+     }
+    
+     /**
+     * Handles the click event on a player vote button.
+     * Records the vote in Firebase. Disables buttons to prevent multiple votes.
+     * @param {Event} event - The click event object.
+     */
+    function handleVoteClick(event) { 
+        console.log("handleVoteClick triggered. Clicked element:", event.target); // Debug log
+        const clickedButton = event.target.closest('.player-vote-btn'); // Find the parent button
+        if (!clickedButton) {
+            console.error("Could not find parent button for click target:", event.target);
+            return; // Exit if we didn't click inside a valid button area
+        }
+         if (clickedButton.disabled) {
+             console.log("Vote ignored: Button is disabled (likely already voted).");
+             return;
+        }
+        if (hasVotedThisRound) return;
+    
+    
+        const targetUserId = clickedButton.dataset.targetUserId;
+          console.log("Target User ID:", targetUserId);
+        if (!targetUserId) return;
+    
+        console.log(`Vote pour : ${localPlayersData[targetUserId]?.pseudo || targetUserId}`);
+        // Disable all buttons immediately for visual feedback
+        document.querySelectorAll('.player-vote-btn').forEach(btn => btn.disabled = true);
+        // Add 'voted-for' class to the specific button clicked
+        clickedButton.classList.add('voted-for'); // Add class to the button
+    
+       console.log(`Writing vote to Firebase: votes/${currentUserId} = ${targetUserId}`); // Debug log
+        gameStateRef.child('votes').child(currentUserId).set(targetUserId)
+            .then(() => {
+                 console.log("Firebase vote write SUCCESSFUL.");
+                 // No need to manually set hasVotedThisRound here,
+                 // the Firebase listener will trigger a re-render which will update it.
+            })
+            .catch(error => {
+                console.error("Firebase vote write FAILED:", error);
+                alert("Erreur lors de l'enregistrement de votre vote. Veuillez réessayer.");
+                // Re-enable buttons ONLY IF the write truly failed AND the state hasn't updated yet
+                // Safest might be to just let the next Firebase update fix the UI state
+                // But for immediate feedback on failure:
+                 document.querySelectorAll('.player-vote-btn').forEach(btn => {
+                     // Only re-enable if the global state doesn't show we've voted
+                     const currentVotes = localGameState.votes || {};
+                     if (!currentVotes[currentUserId]) { // Check if vote wasn't registered after all
+                         btn.disabled = false;
+                     }
+                 });
+                 clickedButton.classList.remove('voted-for'); // Remove visual cue on failure
+            });
+    }
+    
+    /**
+     * Handles the click on the "Ready for next round" button.
+     * Sets the player's ready status to true in Firebase.
+     */
+    function handleNextRoundClick() { 
+        if (isReadyForNext) return;
+        console.log("Clic 'Prêt prochaine manche'");
+        nextRoundBtn.disabled = true;
+        nextRoundBtn.textContent = "Prêt !";
+        nextRoundBtn.classList.add('ready');
+    
+        gameStateRef.child('readyForNextRound').child(currentUserId).set(true)
+            .then(() => console.log("Statut 'Prêt' envoyé."))
+            .catch(error => {
+                console.error("Erreur envoi 'Prêt':", error);
+                alert("Erreur enregistrement statut 'Prêt'.");
+                nextRoundBtn.disabled = false;
+                nextRoundBtn.textContent = "Prêt pour la prochaine manche";
+                nextRoundBtn.classList.remove('ready');
+            });
+    }
+    
+    /**
+     * Handles the click on a "Toss" button for a coin toss.
+     * Only allows the designated player to initiate a toss.
+     * Sets an 'activeToss' signal in Firebase to coordinate the toss animation.
+     * @param {Event} event - The click event object, expected from event delegation.
+     */
+    function handleCoinTossTriggerClick(event) { 
+         // Utiliser la délégation d'événements sur le conteneur resultsDisplayDiv
+         if (!event.target.matches('.toss-trigger-button')) {
+             return; // Clic ailleurs dans la zone
+         }
+    
+         const button = event.target;
+         const targetPlayerId = button.dataset.targetPlayerId;
+    
+         console.log(`Clic sur 'Lancer' pour ${targetPlayerId}`);
+    
+         // Vérifications
+         if (currentUserId !== targetPlayerId) {
+              console.warn("Tentative de lancer pour un autre joueur.");
+              return;
+         }
+         if (localGameState.coinTosses && localGameState.coinTosses[targetPlayerId]) {
+             console.warn("Lancer déjà effectué.");
+             button.disabled = true; return;
+         }
+         if (localGameState.activeToss) {
+              console.warn("Un autre lancer est déjà en cours.");
+              alert(`Attendez la fin du lancer de ${localGameState.activeToss.tossingPlayerPseudo}...`);
+              // Le bouton devrait déjà être caché/désactivé par renderResultsPhase, mais sécurité
+              button.disabled = true;
+              return;
+         }
+    
+         // Désactiver le bouton immédiatement
+         button.disabled = true;
+         button.textContent = 'Lancement...';
+    
+         // Triggering Toss
+         console.log(`Déclenchement du lancer par ${currentUserPseudo} (ID: ${currentUserId})`);
+         const tossInitiationData = {
+             tossingPlayerId: currentUserId,
+             tossingPlayerPseudo: currentUserPseudo, // Envoyer le pseudo pour affichage direct
+             startTime: firebase.database.ServerValue.TIMESTAMP
+         };
+    
+         // Écrire dans Firebase pour signaler le début du lancer à tous
+         gameStateRef.child('activeToss').set(tossInitiationData)
+             .then(() => {
+                 console.log("Signal 'activeToss' envoyé. La popup devrait s'ouvrir pour tous.");
+             })
+             .catch(error => {
+                 console.error("Erreur lors du déclenchement du lancer (écriture activeToss):", error);
+                 alert("Erreur lors du lancement de la pièce. Veuillez réessayer.");
+                 // Réactiver le bouton si l'écriture échoue
+                 if(button) { // Vérifier si le bouton existe toujours
+                    button.disabled = false;
+                    button.textContent = 'Lancer';
+                 }
+             });
+    }
+    
+    // --- Main Game Logic ---
+    
+    /**
+     * Initializes the game page.
+     * Assigns DOM elements, initializes Firebase, sets up onDisconnect, and attaches event listeners.
+     * Shows 'waiting' phase initially.
+     */
+    function initializeGame() {
+         console.log("Initialisation jeu...");
+         // Assign DOM elements
+        //  gameIdDisplay = document.getElementById('gameIdDisplay');
+         playerListElement = document.getElementById('player-list');
+         gameContent = document.getElementById('game-content');
+         votingPhaseDiv = document.getElementById('voting-phase');
+         resultsPhaseDiv = document.getElementById('results-phase');
+         resultsDisplayDiv = document.getElementById('results-display');
+         waitingAreaDiv = document.getElementById('waiting-area');
+         currentQuestionElement = document.getElementById('current-question');
+         playerVoteOptionsDiv = document.getElementById('player-vote-options');
+         voteStatusElement = document.getElementById('vote-status');
+         nextRoundBtn = document.getElementById('next-round-btn');
+         readyStatusElement = document.getElementById('ready-status');
+         leaveGameBtn = document.getElementById('leaveGameBtn');
+         waitingMessage = document.getElementById('waiting-message');
+         pauseMessageElement = document.getElementById('pause-message');
+         // Nouveaux éléments popup
+         coinTossPopup = document.getElementById('coin-toss-popup');
+         popupTosserNameElement = document.getElementById('popup-tosser-name');
+         popupCoinElement = document.getElementById('popup-coin');
+         popupStatusElement = document.querySelector('#coin-toss-popup .popup-status'); // Sélection plus spécifique
+    
+         if(/*!gameIdDisplay||*/  !resultsDisplayDiv || !coinTossPopup || !popupStatusElement) {
+             console.error("DOM non prêt ou éléments essentiels manquants!");
+             alert("Erreur critique: Impossible de charger l'interface du jeu.");
+             return;
+         }
+         /*gameIdDisplay.textContent = gameId;*/
+         showPhase('waiting');
+         waitingMessage.textContent = "Connexion...";
+    
+        // Initialize Firebase
+        try {
+            if (!firebase.apps.length) {
+                firebaseApp = firebase.initializeApp(firebaseConfig);
+            } else {
+                firebaseApp = firebase.app();
+            }
+            database = firebase.database();
+            gameRef = database.ref(`lobbies/${gameId}`);
+            playersRef = database.ref(`lobbies/${gameId}/players`);
+            currentPlayerRef = playersRef.child(currentUserId);
+            gameStateRef = database.ref(`lobbies/${gameId}/currentGame`);
+            console.log("Références Firebase configurées:", `lobbies/${gameId}`);
+    
+            // Marquer comme connecté et configurer onDisconnect
+            currentPlayerRef.update({ isConnected: true, lastSeen: firebase.database.ServerValue.TIMESTAMP })
+                .then(() => currentPlayerRef.onDisconnect().update({
+                    isConnected: false,
+                    disconnectedAt: firebase.database.ServerValue.TIMESTAMP
+                }))
+                .then(() => {
+                    console.log("Connecté et onDisconnect configuré.");
+                    attachFirebaseListeners(); // Attacher les listeners APRÈS connexion réussie
+                })
+                .catch(error => {
+                    console.error("Erreur connexion/onDisconnect:", error);
+                    alert("Erreur connexion partie. Redirection...");
+                    getWebAppUrl().then(baseUrl => {
+                        window.top.location.href = `${baseUrl}?page=home&error=${encodeURIComponent("Impossible de rejoindre.")}`;
+                    }).catch(() => window.top.location.href = window.location.origin);
+                });
+        } catch (error) {
+            console.error("Erreur init Firebase:", error);
+            alert("Erreur critique Firebase.");
+             getWebAppUrl().then(baseUrl => {
+                window.top.location.href = `${baseUrl}?page=home&error=${encodeURIComponent("Erreur Firebase.")}`;
+            }).catch(() => window.top.location.href = window.location.origin);
+        }
+    
+        // Attacher les gestionnaires d'événements
+        nextRoundBtn.addEventListener('click', handleNextRoundClick);
+        leaveGameBtn.addEventListener('click', leaveGameVoluntarily);
+        // Utiliser la délégation pour les boutons "Lancer" générés dynamiquement
+        resultsDisplayDiv.addEventListener('click', handleCoinTossTriggerClick);
+     }
+    
+    
+    /**
+     * Central function called after each Firebase update.
+     * Manages UI updates, game pause logic, leader actions, and coin toss popup.
+     * @param {object} [previousGameState={}] - The game state *before* this update. Used for comparisons.
+     */
+    function updateGameUIAndState(previousGameState = {}) {
+        
+        if (!localPlayersData || Object.keys(localPlayersData).length === 0) return;
+    
+        connectedPlayersCount = Object.values(localPlayersData).filter(p => p.isConnected === true).length;
+        updatePlayerListUI(); // Toujours mettre à jour la liste
+    
+        const currentPhase = localGameState.phase || 'waiting_start';
+        const activeToss = localGameState.activeToss;
+        const previousActiveToss = previousGameState.activeToss;
+        const coinTosses = localGameState.coinTosses || {};
+    
+        // Coin popup management 
+    
+        // CASE 1: A toss has just STARTED (activeToss present, previously it was absent or different tosser)
+        if (activeToss && (!previousActiveToss || previousActiveToss.tossingPlayerId !== activeToss.tossingPlayerId)) {
+            showCoinTossPopup(activeToss.tossingPlayerId, activeToss.tossingPlayerPseudo || 'Un joueur');
+    
+            // TOSSER'S LOGIC: Start timer to write the result
+            if (activeToss.tossingPlayerId === currentUserId && !activeTossTimeoutId) {
+                console.log("JE suis le lanceur. Timer écriture résultat démarré.");
+                activeTossTimeoutId = setTimeout(() => {
+                    const randomOutcome = Math.random();
+                    const result = randomOutcome < 0.5 ? 'HEADS' : 'TAILS';
+                    const revealVotes = (result === 'HEADS');
+                    const resultText = `Résultat : ${result === 'HEADS' ? 'FACE !' : 'PILE !'}`;
+                    console.log(`Lanceur ${currentUserId}: Résultat ${result}. Ecriture DB...`);
+    
+                    // Mettre à jour popup locale IMMÉDIATEMENT (pour le lanceur)
+                    updatePopupWithFinalResult(resultText, result);
+    
+                    const tossResultData = { result, revealVotes, timestamp: firebase.database.ServerValue.TIMESTAMP };
+                    const updates = {};
+                    updates[`coinTosses/${currentUserId}`] = tossResultData;
+                    updates['activeToss'] = null; // !! Effacer le signal !!
+    
+                    gameStateRef.update(updates)
+                        .then(() => console.log(`Lanceur ${currentUserId}: Résultat écrit et activeToss effacé.`))
+                        .catch(error => {
+                            console.error(`Lanceur ${currentUserId}: Erreur écriture résultat/clear activeToss:`, error);
+                            gameStateRef.child('activeToss').set(null); // Tentative de nettoyage
+                        })
+                        .finally(() => activeTossTimeoutId = null);
+                }, WRITE_RESULT_DELAY);
+            }
+        }
+        // CASE 2: A toss has just ENDED (activeToss absent or null, previously it was present)
+        else if (!activeToss && previousActiveToss && previousActiveToss.tossingPlayerId) {
+             const finishedTosserId = previousActiveToss.tossingPlayerId;
+             console.log(`Lancer terminé pour ${finishedTosserId}. Vérification popup.`);
+             // S'assurer que la popup affiche le résultat final, même pour les spectateurs
+             if (isPopupVisible && lastDisplayedTosserId === finishedTosserId) {
+                 const finalTossData = coinTosses[finishedTosserId];
+                 if (finalTossData) {
+                     const resultText = `Résultat : ${finalTossData.result === 'HEADS' ? 'FACE !' : 'PILE !'}`;
+                     // Met à jour la popup pour fixer la pièce sur la bonne face
+                     updatePopupWithFinalResult(resultText, finalTossData.result);
+                 } else {
+                     console.warn(`Résultat final pour ${finishedTosserId} non trouvé dans coinTosses!`);
+                     popupStatusElement.textContent = "Terminé."; // Fallback
+                 }
+             } else if (isPopupVisible && lastDisplayedTosserId !== finishedTosserId) {
+                 console.warn(`Popup visible mais pour ${lastDisplayedTosserId}, pas pour ${finishedTosserId} qui vient de finir.`);
+                 // Peut arriver si les événements s'enchaînent très vite, on laisse le timer fermer la popup actuelle.
+             }
+             // Le timer de fermeture (popupCloseTimerId) lancé par showCoinTossPopup gère la fermeture effective.
+        }
+        // CASE 3: No toss in progress and none just ended
+       else if (!activeToss && !previousActiveToss) {
+            // Si la popup est encore visible ET qu'AUCUN timer de fermeture n'est actif (sécurité pour états incohérents)
+            if (isPopupVisible && !popupCloseTimerId) { 
+                console.warn("Aucun lancer actif, popup visible et pas de timer fermeture : fermeture forcée.");
+                hideCoinTossPopup();
+            }
+            // Nettoyer le timeout d'écriture (sécurité si lanceur déco avant fin)
+            if (activeTossTimeoutId) {
+                clearTimeout(activeTossTimeoutId);
+                activeTossTimeoutId = null;
+                console.warn("Nettoyage timeout écriture car activeToss est null.");
+            }
+        }
+        // CASE 4: Toss in progress, but no change (we do nothing special here)
+        else if (activeToss && previousActiveToss && previousActiveToss.tossingPlayerId === activeToss.tossingPlayerId) {
+            // Animation continues, close timer is running.
+        }
+    
+        // End Popup Management 
+    
+        // Pause Management & Leader Logic 
+        let pauseGame = connectedPlayersCount < MIN_CONNECTED_PLAYERS_TO_PROCEED && currentPhase !== 'waiting_start';
+        pauseMessageElement.style.display = pauseGame ? 'block' : 'none';
+        if (pauseGame) pauseMessageElement.textContent = `Jeu en pause (${connectedPlayersCount}/${MIN_CONNECTED_PLAYERS_TO_PROCEED} joueurs). En attente...`;
+    
+        // Le leader n'agit que si jeu non en pause ET aucun lancer en cours
+        if (isLeader && !pauseGame && !activeToss) {
+            //console.log("Exécution logique Leader..."); // Peut être verbeux
+            if (currentPhase === 'waiting_start' && connectedPlayersCount >= MIN_CONNECTED_PLAYERS_TO_PROCEED) {
+                console.log("Leader: Démarrage 1er tour."); startNewRound(); return;
+            }
+            if (currentPhase === 'voting') {
+                const votes = localGameState.votes || {};
+                const connectedVotes = Object.keys(votes).filter(id => localPlayersData[id]?.isConnected);
+                if (connectedVotes.length >= connectedPlayersCount) {
+                    console.log("Leader: Fin votes -> Calcul résultats."); calculateResultsAndTransition(); return;
+                }
+            }
+            if (currentPhase === 'results') {
+                const ready = localGameState.readyForNextRound || {};
+                const connectedReady = Object.keys(ready).filter(id => localPlayersData[id]?.isConnected);
+                if (connectedReady.length >= connectedPlayersCount) {
+                    console.log("Leader: Tous prêts -> Prochain tour."); startNewRound(); return;
+                }
+            }
+        }
+    
+        //  Phase Display
+        if (!pauseGame) {
+            // Éviter de changer de phase si la popup est visible pour montrer le résultat
+            if (isPopupVisible && currentPhase === 'results') {
+                console.log("Popup visible, rendu résultats en arrière-plan.");
+                showPhase('results'); // Assurer que la div est active
+                renderResultsPhase(); // Mettre à jour le contenu
+            } else {
+                 switch (currentPhase) {
+                    case 'voting': showPhase('voting'); renderVotingPhase(); break;
+                    case 'results': showPhase('results'); renderResultsPhase(); break;
+                    case 'waiting_start':
+                        showPhase('waiting');
+                        waitingMessage.textContent = connectedPlayersCount >= MIN_CONNECTED_PLAYERS_TO_PROCEED
+                            ? "Préparation..." : `Attente joueurs (${connectedPlayersCount}/${MIN_CONNECTED_PLAYERS_TO_PROCEED})...`;
+                        break;
+                    default: showPhase('waiting'); waitingMessage.textContent = "Chargement..."; break;
+                 }
+            }
+        } else {
+             // Si en pause, s'assurer que le contenu sous-jacent est à jour même si non visible activement
+             if (currentPhase === 'results') renderResultsPhase();
+             else if (currentPhase === 'voting') renderVotingPhase();
+        }
+    }
+    
+    
+    // --- Game Logic Functions (Leader) ---
+    
+    /**
+     * Starts a new round (Leader only).
+     * Selects a new question, resets round-specific game state, and updates Firebase.
+     */
+    function startNewRound() {
+        if (!isLeader) return;
+        const newQuestion = getRandomQuestion();
+        const nextRoundNumber = (localGameState.round || 0) + 1;
+        console.log(`Leader: Début Manche ${nextRoundNumber}`);
+        const newGameState = {
+            round: nextRoundNumber,
+            phase: 'voting',
+            question: newQuestion,
+            votes: null,
+            results: null,
+            readyForNextRound: null,
+            coinTosses: null,
+            activeToss: null // S'assurer de réinitialiser le lancer actif
+        };
+        gameStateRef.set(newGameState)
+          .catch(error => console.error("Leader: Erreur startNewRound:", error));
+    }
+    
+    /**
+     * Calculates vote results and transitions the game to the 'results' phase (Leader only).
+     * Updates Firebase with vote counts and new phase.
+     */
+    function calculateResultsAndTransition() { 
+        if (!isLeader) return;
+        const votes = localGameState.votes || {};
+        console.log("Leader: Calcul résultats:", votes);
+        const voteCounts = {};
+        // Initialiser le compte pour tous les joueurs ACTUELS pour éviter erreurs si qqn part pile à ce moment
+        Object.keys(localPlayersData).forEach(playerId => {
+            if(localPlayersData[playerId]) { // Vérifier que le joueur existe toujours dans les données locales
+                 voteCounts[playerId] = 0;
+            }
+        });
+        Object.values(votes).forEach(votedForId => {
+            if (voteCounts.hasOwnProperty(votedForId)) {
+                voteCounts[votedForId]++;
+            } else {
+                console.warn(`Vote pour ${votedForId} (inconnu/parti).`);
+            }
+        });
+        console.log("Leader: Résultats calculés:", voteCounts);
+        gameStateRef.update({
+                phase: 'results',
+                results: voteCounts,
+                // Ne pas toucher à coinTosses ou activeToss ici
+            })
+            .then(() => console.log("Leader: Phase 'results' et résultats écrits."))
+            .catch(error => console.error("Leader: Erreur transition vers results:", error));
+    }
+    
+    // --- Startup & Teardown ---
+    /** Initializes the game when the DOM is fully loaded. */
+    document.addEventListener('DOMContentLoaded', initializeGame);
+    
+    window.addEventListener('beforeunload', () => {
+        console.log("beforeunload: onDisconnect gère la déconnexion.");
+        // cleanupListenersAndDisconnect();
+    });
+    </script>
