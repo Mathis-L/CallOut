@@ -1,0 +1,984 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <base target="_top">
+    <title>Lobby - Call Out Game</title>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Lilita+One&family=Poppins:ital,wght@0,100;0,200;0,300;0,400;0,500;0,600;0,700;0,800;0,900;1,100;1,200;1,300;1,400;1,500;1,600;1,700;1,800;1,900&display=swap" rel="stylesheet">
+    <style>
+      /* --- Theme Variables --- */
+      :root {
+        --clr-bg: #FDF6E9;
+        --clr-card-bg: #FFFFFF;
+        --clr-text-dark: #4A2F48;
+        --clr-text-light: #FFFFFF;
+        --clr-primary-green: #2A5757;
+        --clr-primary-orange: #F97A3D;
+        --clr-primary-purple: #4A2F48;
+        --clr-accent-light-purple: #DAB6F1;
+        --clr-accent-teal: #5DC0A6;
+        --clr-accent-yellow: #F9D423;
+        --clr-success: #5DC0A6;
+        --clr-error: #E94F37;
+        --clr-disabled-bg: #DCCFCF;
+        --clr-disabled-text: #9B8B8B;
+        --clr-input-bg: #FAF0E0;
+        --clr-input-border: #4A2F48;
+
+        --font-main: 'Poppins', sans-serif;
+        --font-title: 'Lilita One', sans-serif;
+        --radius-card: 20px;
+        --radius-button: 12px;
+        --radius-input: 10px; /* For radio options visual */
+
+        --shadow-strong: 5px 5px 0px var(--clr-primary-purple);
+        --border-strong: 3px solid var(--clr-primary-purple);
+      }
+
+      body {
+        font-family: var(--font-main); margin: 0; padding: 20px; min-height: 100vh;
+        background-color: var(--clr-bg); color: var(--clr-text-dark);
+        display: flex; flex-direction: column; align-items: center; line-height: 1.6;
+      }
+      * { box-sizing: border-box; padding: 0; margin: 0; }
+
+      .container { width: 100%; max-width: 480px; margin: 10px auto; display: flex; flex-direction: column; align-items: center; }
+      
+      h1 {
+        font-family : var(--font-title);
+        font-weight: 900;
+        font-size: clamp(2rem, 7vw, 3rem);
+        color: var(--clr-primary-orange); 
+        margin-bottom: 20px; text-align: center; letter-spacing: -1px;
+        text-shadow: 3px 3px 0px var(--clr-primary-green), 5px 5px 0px var(--clr-primary-purple);
+      }
+      h2 { /* For "Players Online" */
+        font-weight: 700; font-size: 1.3rem; color: var(--clr-text-dark);
+        margin-bottom: 15px; text-align: center;
+      }
+      h4 { /* For "Party Options (Leader)" */
+        font-weight: 700; font-size: 1.1rem; color: var(--clr-primary-orange);
+        margin-bottom: 10px; text-align: center;
+      }
+
+      .card {
+        background-color: var(--clr-card-bg); border-radius: var(--radius-card);
+        border: var(--border-strong); box-shadow: var(--shadow-strong);
+        width: 100%; margin-bottom: 25px; padding: 25px; overflow: visible; position: relative;
+      }
+      
+      /* Decorative Sparkles */
+      .sparkle {
+        width: 15px; height: 15px;
+        background-color: var(--clr-accent-light-purple);
+        position: absolute;
+        clip-path: polygon(50% 0%, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%);
+        z-index: -1;
+      }
+      .sparkle.s1 { top: -25px; left: -25px; transform: rotate(-25deg) scale(1.2); background-color: var(--clr-accent-teal);}
+      .sparkle.s2 { top: 10px; right: -30px; transform: rotate(30deg) scale(1.5); background-color: var(--clr-accent-yellow);}
+      .sparkle.s3 { bottom: 50px; left: -25px; transform: rotate(15deg) scale(1); background-color: var(--clr-primary-orange);}
+      .sparkle.s4 { bottom: -20px; right: -20px; transform: rotate(-40deg) scale(1.3); background-color: var(--clr-accent-light-purple);}
+
+
+      #lobbyInfo { text-align: center; margin-bottom: 20px; font-size: 1rem; font-weight: 500; }
+      .game-code-label { font-weight: 600; }
+      .game-code {
+        font-size: 1.4em; font-weight: 800; color: var(--clr-text-light);
+        background-color: var(--clr-primary-purple); padding: 5px 12px;
+        border-radius: var(--radius-button); display: inline-block; margin-left: 8px;
+        box-shadow: 3px 3px 0 var(--clr-primary-orange);
+        user-select: all; /* Allow easy copying */
+      }
+
+      #playerList {
+        list-style: none; padding: 0; margin-top: 0; margin-bottom: 25px;
+        display: flex; flex-direction: column; gap: 12px;
+      }
+      #playerList li {
+        padding: 10px 15px; background-color: var(--clr-input-bg);
+        border: var(--border-strong); border-radius: var(--radius-button);
+        display: flex; align-items: center; gap: 12px;
+        transition: all 0.2s ease;
+        box-shadow: 3px 3px 0px color-mix(in srgb, var(--clr-primary-purple) 50%, transparent);
+      }
+      #playerList li .player-avatar {
+        width: 48px; height: 48px; border-radius: 50%; object-fit: cover;
+        border: 2px solid var(--clr-primary-purple);
+        flex-shrink: 0;
+      }
+      #playerList li .player-name {
+        flex-grow: 1; font-weight: 600; font-size: 1.1rem;
+      }
+      #playerList li.is-leader .player-name::after {
+        content: '👑'; font-size: 1.1em; margin-left: 8px;
+        display: inline-block; transform: translateY(-2px);
+      }
+      #playerList li.is-self {
+        background-color: var(--clr-accent-teal);
+        color: var(--clr-text-light);
+        border-color: var(--clr-primary-purple);
+        box-shadow: 3px 3px 0px var(--clr-primary-purple);
+      }
+       #playerList li.is-self .player-name { color: var(--clr-text-light); }
+       #playerList li.is-self .player-avatar { border-color: var(--clr-text-light); }
+       #playerList li.is-self.is-leader .player-name::after { color: var(--clr-accent-yellow); }
+
+      .loading, .status-message { font-style: italic; text-align: center; color: var(--clr-text-dark); margin: 15px 0; font-weight: 500; }
+      
+      /* Buttons (same base as HomePage) */
+      button, .button-like-link { 
+        width: 100%; padding: 14px; border: var(--border-strong); border-radius: var(--radius-button);
+        color: var(--clr-text-light); font-family: var(--font-main); font-weight: 700;
+        font-size: 1.1rem; cursor: pointer; transition: all 0.15s ease-out;
+        display: flex; justify-content: center; align-items: center; position: relative;
+        text-decoration: none; text-align: center; box-sizing: border-box;
+        box-shadow: var(--shadow-strong); text-transform: uppercase; letter-spacing: 0.5px;
+      }
+      button:hover:not(:disabled), .button-like-link:hover { 
+        transform: translateY(-3px) translateX(-3px); box-shadow: 8px 8px 0px var(--clr-primary-purple);
+      }
+      button:active:not(:disabled), .button-like-link:active { 
+         transform: translateY(0px) translateX(0px); box-shadow: var(--shadow-strong);
+      }
+      button:disabled { 
+        background-color: var(--clr-disabled-bg); color: var(--clr-disabled-text);
+        border-color: color-mix(in srgb, var(--clr-primary-purple) 50%, transparent);
+        box-shadow: 3px 3px 0px color-mix(in srgb, var(--clr-primary-purple) 50%, transparent);
+        cursor: not-allowed;
+      }
+
+      #startGameBtn { background-color: var(--clr-success); margin-bottom: 10px; }
+      #startGameBtn:hover:not(:disabled) { background-color: color-mix(in srgb, var(--clr-success) 90%, black 5%); }
+      
+      #leaveBtn { background-color: var(--clr-error); }
+      #leaveBtn:hover:not(:disabled) { background-color: color-mix(in srgb, var(--clr-error) 90%, black 5%); }
+
+      #joinStartedGameLink { background-color: var(--clr-primary-orange); }
+      #backHomeLink { background-color: var(--clr-primary-green); }
+
+      #lobby-button-area { margin-top: 20px; display: flex; flex-direction: column; gap: 10px; }
+      
+      /* Prompts */
+      #game-starting-prompt, #lobby-closed-prompt {
+          display: none; text-align: center; padding: 20px;
+          border-radius: var(--radius-card); border: var(--border-strong);
+          background-color: var(--clr-accent-light-purple);
+          box-shadow: var(--shadow-strong);
+      }
+      #game-starting-prompt h2, #lobby-closed-prompt h2 {
+          font-weight: 800; margin-bottom: 10px; font-size: 1.5rem;
+          color: var(--clr-primary-purple);
+      }
+      #game-starting-prompt { background-color: var(--clr-accent-teal); }
+      #game-starting-prompt h2 { color: var(--clr-primary-green); }
+      #lobby-closed-prompt { background-color: color-mix(in srgb, var(--clr-error) 60%, white); }
+      #lobby-closed-prompt h2 { color: var(--clr-error); }
+
+
+      /* --- Custom Radio Button Styles for Question Sets --- */
+      #leader-controls { margin-top: 25px; padding-top: 20px; border-top: 3px dashed var(--clr-accent-light-purple); }
+      #leader-controls p { font-weight: 600; margin-bottom: 15px; text-align: center; }
+      
+      #question-set-options {
+        display: flex; flex-direction: column; gap: 12px; margin-bottom: 15px;
+      }
+      #question-set-options label {
+        display: flex; align-items: center; padding: 10px 15px;
+        border: var(--border-strong); border-radius: var(--radius-button);
+        background-color: var(--clr-input-bg); cursor: pointer;
+        transition: all 0.2s ease;
+        box-shadow: 3px 3px 0px color-mix(in srgb, var(--clr-primary-purple) 50%, transparent);
+      }
+      #question-set-options input[type="radio"] { display: none; } /* Hide actual radio */
+
+      #question-set-options .radio-visual { /* Custom circle */
+        width: 20px; height: 20px; border: 3px solid var(--clr-primary-purple);
+        border-radius: 50%; margin-right: 12px; background-color: white;
+        transition: all 0.2s ease; flex-shrink: 0; display: flex; align-items: center; justify-content: center;
+      }
+      #question-set-options .radio-visual::after { /* Inner dot */
+        content: ''; width: 10px; height: 10px; background-color: var(--clr-primary-orange);
+        border-radius: 50%; transform: scale(0); transition: transform 0.2s ease;
+      }
+      #question-set-options .radio-label-text { color: var(--clr-text-dark); font-weight: 600; }
+
+      #question-set-options input[type="radio"]:checked + .radio-visual::after { transform: scale(1); }
+      #question-set-options input[type="radio"]:checked ~ .radio-label-text { color: var(--clr-primary-orange); }
+      #question-set-options label:has(input[type="radio"]:checked) {
+        border-color: var(--clr-primary-orange);
+        background-color: color-mix(in srgb, var(--clr-primary-orange) 15%, white);
+        box-shadow: 3px 3px 0px var(--clr-primary-orange);
+      }
+      #question-set-options label:hover {
+        border-color: var(--clr-accent-teal);
+        background-color: color-mix(in srgb, var(--clr-accent-teal) 20%, white);
+      }
+       #question-set-options input[type="radio"]:disabled + .radio-visual {
+           border-color: var(--clr-disabled-text); background-color: var(--clr-disabled-bg);
+       }
+       #question-set-options input[type="radio"]:disabled ~ .radio-label-text { color: var(--clr-disabled-text); }
+       #question-set-options label:has(input[type="radio"]:disabled) {
+           opacity: 0.7; cursor: not-allowed;
+           box-shadow: 2px 2px 0px color-mix(in srgb, var(--clr-primary-purple) 30%, transparent);
+       }
+
+      #question-set-status { 
+        font-size: 0.85em; color: var(--clr-primary-green); display: block; 
+        margin-top: 5px; text-align: center; font-weight: 500; height: 1.2em;
+      }
+
+      /* Loader simple */
+      .loader-container { display: flex; justify-content: center; align-items: center; padding: 20px; }
+      .loader { 
+        border: 5px solid var(--clr-input-bg); 
+        border-top: 5px solid var(--clr-primary-orange); 
+        border-radius: 50%; width: 40px; height: 40px; 
+        animation: spin 0.8s linear infinite;
+      }
+      @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
+
+      /* --- Title Sparkle (phone) --- */
+      .title-container {
+        position: relative;
+        display: inline-block;
+        width: 100%;
+        text-align: center;
+      }
+
+      .title-sparkle {
+        width: 12px; 
+        height: 12px;
+        background-color: var(--clr-accent-light-purple);
+        position: absolute;
+        clip-path: polygon(50% 0%, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%);
+        z-index: -1;
+        display: none; /* Caché par défaut, affiché seulement en mode téléphone */
+      }
+      /* Twinkle Animation */
+      @keyframes twinkle-right {
+        0% { opacity: 0.5; transform: scale(0.8) rotate(0deg); }
+        100% { opacity: 1; transform: scale(1.4) rotate(15deg); }
+      }
+      @keyframes twinkle-left {
+        0% { opacity: 0.5; transform: scale(0.8) rotate(0deg); }
+        100% { opacity: 1; transform: scale(1.4) rotate(-15deg); }
+      }
+
+       @media (max-width: 480px) {
+            h1 { font-size: 1.8rem; }
+            .card { padding: 15px; }
+            .sparkle {display:none}
+            .title-sparkle {display: block;}
+            .title-sparkle.ts1 { top: -5px; left: 10%; background-color: var(--clr-accent-teal); animation: twinkle-right 3.8s infinite alternate; animation-delay: 1.7s;}
+            .title-sparkle.ts2 { top: 10px; right: 15%; background-color: var(--clr-accent-yellow); animation: twinkle-right 2.5s infinite alternate; animation-delay: 0.4s;}
+            .title-sparkle.ts3 { bottom: 15px; left: 25%; background-color: var(--clr-primary-orange); animation: twinkle-left 3.2s infinite alternate; animation-delay: 0.9s;}
+            .title-sparkle.ts4 { bottom: 5px; right: 30%; background-color: var(--clr-accent-light-purple); animation: twinkle-left 4.2s infinite alternate; animation-delay: 2.5s;}
+            #playerList li .player-name { font-size: 1rem; }
+            #playerList li .player-avatar { width: 40px; height: 40px; }
+            .game-code { font-size: 1.2em; }
+       }
+    </style>
+</head>
+<body>
+    <div class="container">
+       <div class="title-container">
+          <div class="title-sparkle ts1"></div>
+          <div class="title-sparkle ts2"></div>
+          <div class="title-sparkle ts3"></div>
+          <div class="title-sparkle ts4"></div>
+          <h1>Party Lobby !</h1>
+        </div>
+
+        <div id="lobby-content" class="card">
+            <div class="sparkle s1"></div>
+            <div class="sparkle s2"></div>
+            <div class="sparkle s3"></div>
+            <div class="sparkle s4"></div>
+            <div id="lobbyInfo">
+                <p><span class="game-code-label">Party Code:</span> <strong class="game-code" id="gameCodeDisplay">...</strong></p>
+            </div>
+            <div id="messageAreaLobby"></div>
+            
+            <h2>Players Ready to Rumble:</h2>
+            <div id="loader-area" class="loader-container"><div class="loader"></div></div>
+            <ul id="playerList">
+                <li class="loading status-message">Finding party people...</li>
+            </ul>
+            
+            <div id="leader-controls" style="display: none;">
+                <h4>Party Options (Leader Only!)</h4>
+                <p>Choose the Question Vibe:</p>
+                <div id="question-set-options">
+                    <label>
+                        <input type="radio" name="questionSet" value="gentle">
+                        <span class="radio-visual"></span>
+                        <span class="radio-label-text">😇 Chill & Gentle</span>
+                    </label>
+                    <label>
+                        <input type="radio" name="questionSet" value="mix" checked>
+                        <span class="radio-visual"></span>
+                        <span class="radio-label-text">😎 Spicy Mix (Default)</span>
+                    </label>
+                    <label>
+                        <input type="radio" name="questionSet" value="extreme">
+                        <span class="radio-visual"></span>
+                        <span class="radio-label-text">🔥 Extra Hot!</span>
+                    </label>
+                </div>
+                <span id="question-set-status"></span>
+            </div>
+
+            <div id="lobby-button-area">
+                <button id="startGameBtn" style="display: block;">Start The Game!</button>
+                <button id="leaveBtn">Leave Lobby</button>
+            </div>
+        </div>
+
+        <div id="game-starting-prompt" class="card">
+            <h2>Game On!</h2>
+            <p class="status-message">The leader hit START! Get ready...</p>
+            <a href="#" id="joinStartedGameLink" class="button-like-link">Jump Into The Game!</a>
+        </div>
+
+        <div id="lobby-closed-prompt" class="card">
+             <h2>Lobby Closed!</h2>
+             <p class="status-message" id="lobbyClosedText">This lobby isn't here anymore.</p>
+             <a href="#" id="backHomeLink" class="button-like-link">Back to Home</a>
+        </div>
+    </div>
+
+    <script>
+        // --- Parameter ---
+        const firebaseConfig = <?!= firebaseConfig ?>;
+        const gameId = "<?!= gameId ?>";
+        const currentUserId = "<?!= userId ?>";
+        const currentUserPseudo = "<?!= pseudo ?>";
+
+        // --- Firebase References ---
+        let firebaseApp, database, gameRef, playersRef, currentPlayerRef;
+
+        // --- DOM Element ---
+        const gameCodeDisplay = document.getElementById('gameCodeDisplay');
+        const playerListElement = document.getElementById('playerList');
+        const startGameBtn = document.getElementById('startGameBtn');
+        const leaveBtn = document.getElementById('leaveBtn');
+        const lobbyContentDiv = document.getElementById('lobby-content');
+        const gameStartingPromptDiv = document.getElementById('game-starting-prompt');
+        const joinStartedGameLink = document.getElementById('joinStartedGameLink');
+        const lobbyClosedPromptDiv = document.getElementById('lobby-closed-prompt');
+        const backHomeLink = document.getElementById('backHomeLink');
+        const lobbyClosedText = document.getElementById('lobbyClosedText');
+        const loaderArea = document.getElementById('loader-area');
+        const messageAreaLobby = document.getElementById('messageAreaLobby');
+        const leaderControlsDiv = document.getElementById('leader-controls');
+        const questionSetOptionsDiv = document.getElementById('question-set-options');
+        const questionSetRadios = document.querySelectorAll('input[name="questionSet"]');
+        const questionSetStatus = document.getElementById('question-set-status');
+
+        // --- Global Variables ---
+        let isLeader = false; // Flag to indicate if the current user is the lobby leader.
+        let leaderId = null; // Stores the ID of the lobby leader.
+        let heartbeatInterval = null; // Interval ID for the player's heartbeat mechanism.
+        let afkCheckInterval = null; // Interval ID for checking AFK players.
+        let gameStatusListener = null; // Firebase listener for game status changes.
+        let playersListener = null; // Firebase listener for player list changes.
+        let webAppBaseUrl = null;  // Base URL of the web application, fetched at startup.
+
+        // --- Functions ---
+
+        /**
+         * Asynchronously fetches the base URL of the Google Apps Script web application.
+         * This URL is crucial for constructing navigation links within the app.
+         * It attempts to use `google.script.run` and falls back to `window.location` if GAS context is unavailable.
+         * On success, it enables the leave button.
+         * On failure, it shows an error and keeps navigation-dependent buttons disabled.
+         */
+        async function fetchWebAppUrl() {
+             console.log("Tentative de récupération de l'URL de base (Lobby)...");
+             try {
+                 webAppBaseUrl = await new Promise((resolve, reject) => {
+                     if (typeof google !== 'undefined' && google.script && google.script.run) {
+                         google.script.run.withSuccessHandler(resolve).withFailureHandler(reject).getScriptUrl();
+                     } else {
+                        console.error("Contexte GAS non disponible (Lobby).");
+                        resolve(window.location.origin + window.location.pathname);
+                        // reject("Contexte GAS non disponible.");
+                     }
+                 });
+                 console.log("URL de base récupérée (Lobby):", webAppBaseUrl);
+                 // Able buttons that rely on URL
+                 leaveBtn.disabled = false;
+             } catch (error) {
+                 console.error("Échec de la récupération de l'URL de base (Lobby):", error);
+                 showAlertLobby("Erreur critique: Impossible de contacter le serveur pour la navigation. Certaines actions peuvent échouer.", 'error');
+                 leaveBtn.disabled = true; // because leave redirect
+             }
+        }
+
+        /**
+       * Displays an alert message within the lobby's message area.
+       * @param {string} message - The message to display.
+       * @param {string} [type='error'] - The type of alert ('error', 'success', 'warning', etc.), influencing its style.
+       */
+        function showAlertLobby(message, type = 'error') {
+            const existingAlert = messageAreaLobby.querySelector('.alert-message');
+            if (existingAlert) existingAlert.remove();
+            const alertContainer = document.createElement('p');
+            alertContainer.className = `alert-message ${type}`;
+            alertContainer.textContent = message;
+            messageAreaLobby.insertBefore(alertContainer, messageAreaLobby.firstChild);
+        }
+
+         /**
+         * Initializes the Firebase application and sets up database references for the lobby.
+         * @returns {boolean} True if initialization is successful, false otherwise.
+         * If initialization fails, it displays a "lobby closed" message with the error.
+         */
+        function initializeFirebase() {
+            try {
+                if (!firebase.apps.length) { firebaseApp = firebase.initializeApp(firebaseConfig); }
+                else { firebaseApp = firebase.app(); }
+                database = firebase.database();
+                gameRef = database.ref(`lobbies/${gameId}`);
+                playersRef = database.ref(`lobbies/${gameId}/players`);
+                currentPlayerRef = database.ref(`lobbies/${gameId}/players/${currentUserId}`);
+                console.log("Firebase initialisé (Lobby):", gameId);
+                return true;
+            } catch (error) {
+                console.error("Erreur init Firebase (Lobby):", error);
+                showLobbyClosed(`Erreur critique d'initialisation Firebase: ${error.message}`);
+                return false;
+            }
+        }
+
+        /**
+         * Updates the player list displayed in the UI.
+         * It clears the existing list and populates it with players from `playersData`,
+         * highlighting the current user and the lobby leader.
+         * @param {object} playersData - An object where keys are player IDs and values are player data (pseudo, avatarSrc, joinedAt).
+         */
+        function updatePlayerListUI(playersData) {
+            loaderArea.style.display = 'none';
+            playerListElement.innerHTML = '';
+            if (!playersData || Object.keys(playersData).length === 0) {
+                playerListElement.innerHTML = '<li class="status-message">Personne dans le lobby...</li>';
+                return;
+            }
+            const playersArray = Object.entries(playersData).map(([id, data]) => ({ id, ...data }));
+            playersArray.sort((a, b) => (a.joinedAt || 0) - (b.joinedAt || 0));
+
+            playersArray.forEach(player => {
+                const li = document.createElement('li');
+                li.dataset.userId = player.id;
+
+                // Add Avatar Image ---
+                if (player.avatarSrc) {
+                    const img = document.createElement('img');
+                    img.src = player.avatarSrc;
+                    img.alt = "Avatar";
+                    img.classList.add('player-avatar');
+                    li.appendChild(img); // Add image first
+                }
+
+                const nameSpan = document.createElement('span'); 
+                nameSpan.textContent = player.pseudo;
+                li.appendChild(nameSpan);
+
+                if (player.id === leaderId) li.classList.add('is-leader');
+                if (player.id === currentUserId) li.classList.add('is-self');
+
+                playerListElement.appendChild(li);
+            });
+        }
+
+        /**
+         * Generates a URL for navigating to different pages within the web application.
+         * Uses the pre-fetched `webAppBaseUrl`.
+         * @param {string} page - The target page name (e.g., 'home', 'game').
+         * @param {object} [params={}] - An object of query parameters to append to the URL.
+         * @returns {string|null} The constructed URL, or null if `webAppBaseUrl` is not available.
+         */
+        function generateRedirectUrl(page, params = {}) {
+             if (!webAppBaseUrl) {
+                 console.error("URL de base non disponible pour générer URL (Lobby)!");
+                 return null;
+             }
+             let url = `${webAppBaseUrl}?page=${page}`;
+             Object.entries(params).forEach(([key, value]) => {
+                 if (value != null) { // Ajouter seulement si la valeur n'est pas null/undefined
+                    url += `&${encodeURIComponent(key)}=${encodeURIComponent(value)}`;
+                 }
+             });
+             console.log("URL générée (Lobby):", url);
+             return url;
+         }
+
+        /**
+         * Cleans up resources before redirecting to another page.
+         * This includes clearing intervals (heartbeat, AFK check) and detaching Firebase listeners.
+         * It also cancels Firebase `onDisconnect` handlers.
+         */
+        function cleanupBeforeRedirect() { 
+            console.log("Nettoyage des listeners et timers (Lobby)...");
+            if (heartbeatInterval) clearInterval(heartbeatInterval);
+            if (afkCheckInterval) clearInterval(afkCheckInterval);
+            heartbeatInterval = null; afkCheckInterval = null;
+            if (gameRef && gameStatusListener) gameRef.off('value', gameStatusListener);
+            if (playersRef && playersListener) playersRef.off('value', playersListener);
+            gameStatusListener = null; playersListener = null;
+            cancelOnDisconnectHandlers();
+        }
+        
+        /**
+         * Cancels any pending Firebase `onDisconnect` handlers for the current player and the game.
+         * This is important to prevent unintended Firebase operations after the user has explicitly left or been redirected.
+         */
+        function cancelOnDisconnectHandlers() { 
+            if (currentPlayerRef) { currentPlayerRef.onDisconnect().cancel().catch(err => console.warn("Erreur annulation onDisconnect joueur:", err)); }
+            if (gameRef) { gameRef.onDisconnect().cancel().catch(err => console.warn("Erreur annulation onDisconnect jeu:", err)); }
+        }
+
+         /**
+         * Navigates the browser to the specified URL.
+         * It first calls `cleanupBeforeRedirect` to release resources.
+         * @param {string} url - The URL to navigate to. If null or undefined, an error is shown.
+         */
+         function navigateToPage(url) {
+            if (!url) {
+                showAlertLobby("Impossible de naviguer: URL de destination manquante.", "error");
+                leaveBtn.disabled = false;
+                return;
+            }
+            cleanupBeforeRedirect();
+            console.log("Redirection (synchrone après clic/event) vers:", url);
+            window.top.location.href = url;
+         }
+
+         /**
+         * Generates a URL to navigate back to the home page, optionally with a message or error.
+         * @param {string} [message=null] - A message to display on the home page.
+         * @param {string} [error=null] - An error message to display on the home page.
+         * @returns {string|null} The constructed home page URL, or null if base URL generation fails.
+         */
+        function getHomeUrl(message = null, error = null) {
+            const params = {};
+            if (message) params.message = message;
+            if (error) params.error = error;
+            return generateRedirectUrl('home', params);
+        }
+
+        /**
+         * Handles the process of the current player leaving the lobby.
+         * It disables the leave button, cancels `onDisconnect` handlers, removes the player
+         * from Firebase, and then shows the "lobby closed" prompt with a link back home.
+         * This function is designed to avoid direct redirection to better support iOS environments.
+         */
+        async function leaveLobby() {
+            console.log("Clic sur 'Quitter le lobby'.");
+            leaveBtn.disabled = true;
+            leaveBtn.textContent = "Déconnexion...";
+
+             // 1. Cancel onDisconnect before manual deletion
+             cancelOnDisconnectHandlers();
+
+            try {
+                if (currentPlayerRef) {
+                    await currentPlayerRef.remove();
+                    console.log("Joueur retiré manuellement de Firebase.");
+                } else {
+                    console.warn("currentPlayerRef non défini, suppression manuelle impossible.");
+                }
+
+                 // iOS workaround don't redirect yet show a link to the homepage
+                 const homeUrl = getHomeUrl("Vous avez quitté le lobby.");
+                 if (homeUrl) {
+                     showLobbyClosed("Vous avez quitté le lobby.", homeUrl); // Utilise le prompt existant
+                 } else {
+                     showAlertLobby("Vous avez quitté, mais impossible de générer le lien retour.", "message");
+                     // Laisse le bouton désactivé dans cet état étrange
+                 }
+
+            } catch(error) {
+                 console.error("Erreur lors de la suppression manuelle du joueur:", error);
+                  const homeUrl = getHomeUrl(null, "Erreur en quittant le lobby.");
+                  if (homeUrl) {
+                     showLobbyClosed(`Erreur en quittant: ${error.message}.`, homeUrl);
+                  } else {
+                      showAlertLobby("Erreur en quittant, et impossible de générer le lien retour.", "error");
+                  }
+            }
+        }
+
+         /**
+         * Starts a periodic check for AFK (Away From Keyboard) players, intended to be run by the lobby leader.
+         * If a player (other than the leader) hasn't updated their 'lastSeen' timestamp within
+         * AFK_TIMEOUT_MS, they are removed from the lobby.
+         * The check runs every CHECK_INTERVAL_MS.
+         */
+        function startAfkCheck() {
+            const AFK_TIMEOUT_MS = 240 * 1000; // 4 minutes: Threshold for a player to be considered AFK.
+            const CHECK_INTERVAL_MS = 30 * 1000; // 30 seconds: How often the AFK check is performed.
+
+             // Clear any existing AFK check interval to prevent multiple instances.
+            if (afkCheckInterval) clearInterval(afkCheckInterval); 
+
+            console.log("Démarrage de la vérification AFK par le leader.");
+            afkCheckInterval = setInterval(async () => {
+               // Stop checking if the current user is no longer the leader or if Firebase references are lost
+                if (!isLeader || !playersRef) {
+                     if(afkCheckInterval) clearInterval(afkCheckInterval);
+                     afkCheckInterval = null;
+                     console.log("Arrêt de la vérification AFK (plus leader ou ref invalide).");
+                     return;
+                };
+                try {
+                    const snapshot = await playersRef.once('value');
+                    const playersData = snapshot.val();
+                    if (!playersData) return;
+                    const now = Date.now();
+                    for (const [id, player] of Object.entries(playersData)) {
+                        if (id === currentUserId) continue;
+                        const lastSeen = player.lastSeen || player.joinedAt || 0;
+                         // If the player has been inactive for too long, remove them.
+                        if (now - lastSeen > AFK_TIMEOUT_MS) {
+                            console.log(`Kicking AFK player: ${player.pseudo} (${id})`);
+                            await playersRef.child(id).remove();
+                        }
+                    }
+                } catch (error) {
+                    if(error.code === 'PERMISSION_DENIED') {
+                        console.warn("Permission refusée pendant l'AFK check. Arrêt.");
+                         if(afkCheckInterval) clearInterval(afkCheckInterval);
+                         afkCheckInterval = null;
+                    } else {
+                        console.error("Erreur pendant la vérification AFK:", error);
+                    }
+                }
+            }, CHECK_INTERVAL_MS);
+        }
+
+        /**
+         * Starts a periodic "heartbeat" for the current player.
+         * This function updates the player's 'lastSeen' timestamp in Firebase at regular intervals,
+         * indicating that the player is still active in the lobby.
+         * The heartbeat runs every HEARTBEAT_INTERVAL_MS.
+         */
+        function startHeartbeat() {
+             if (heartbeatInterval) clearInterval(heartbeatInterval); // Clear ancien timer
+             const HEARTBEAT_INTERVAL_MS = 60 * 1000; // 1 minute: How often the heartbeat is sent.
+             console.log("Démarrage du heartbeat.");
+             heartbeatInterval = setInterval(() => {
+                 if (!currentPlayerRef) {
+                     console.warn("Heartbeat: currentPlayerRef non défini, arrêt.");
+                     if(heartbeatInterval) clearInterval(heartbeatInterval);
+                     heartbeatInterval = null;
+                     return;
+                 }
+                  // Update the 'lastSeen' field with the Firebase server's timestamp.
+                 currentPlayerRef.update({ lastSeen: firebase.database.ServerValue.TIMESTAMP })
+                     .then(() => { console.log("Heartbeat success"); })
+                     .catch(error => {
+                         console.warn("Échec MAJ heartbeat:", error);
+                         if (error.code === 'PERMISSION_DENIED') {
+                             console.log("Permission refusée pour heartbeat, arrêt.");
+                             if(heartbeatInterval) clearInterval(heartbeatInterval);
+                             heartbeatInterval = null;
+                         }
+                     });
+             }, HEARTBEAT_INTERVAL_MS);
+             // MAJ initiale
+             if (currentPlayerRef) {
+                currentPlayerRef.update({ lastSeen: firebase.database.ServerValue.TIMESTAMP })
+                                .catch(err => console.warn("Echec MAJ initiale lastSeen:", err));
+              }
+        }
+
+        /**
+         * Configures Firebase 'onDisconnect' handlers for the current player.
+         * These handlers define what actions the Firebase server should take automatically if the client's
+         * connection is unexpectedly lost (e.g., browser crash, network issues).
+         * It cancels any previous onDisconnect handlers before setting new ones.
+         * - If the player is the last one in the lobby, the entire lobby is set to be removed on disconnect.
+         * - Otherwise, only the current player's data is set to be removed on disconnect.
+         *
+         * @param {object} players - An object containing the current players in the lobby.
+         *                           Keys are player IDs, values are player data.
+         */
+        function handleOnDisconnectLogic(players) {
+            if (!gameRef || !currentPlayerRef) return;
+
+            const playerCount = players ? Object.keys(players).length : 0;
+            const isCurrentUserPresent = players && players[currentUserId];
+
+            // CRITICAL: Cancel any pre-existing onDisconnect handlers before setting new ones.
+            // This prevents stacking multiple, potentially conflicting, disconnect operations.
+            cancelOnDisconnectHandlers();
+
+            if (playerCount === 1 && isCurrentUserPresent) {
+                console.log("Configuration onDisconnect: Dernier joueur -> supprimer tout le lobby.");
+                gameRef.onDisconnect().remove()
+                 .then(() => console.log("Handler onDisconnect configuré pour supprimer TOUT le lobby."))
+                 .catch(err => console.error("Erreur config onDisconnect pour suppression lobby:", err));
+            } else if (playerCount > 0 && isCurrentUserPresent) {
+                 console.log("Configuration onDisconnect: Plusieurs joueurs -> supprimer seulement moi.");
+                currentPlayerRef.onDisconnect().remove()
+                  .then(() => console.log("Handler onDisconnect configuré pour supprimer SEULEMENT le joueur."))
+                  .catch(err => console.error("Erreur config onDisconnect joueur seul:", err));
+            } else {
+                console.log("Configuration onDisconnect: Non applicable (0 joueur ou je ne suis pas listé).");
+            }
+       }
+
+        /**
+         * Attaches Firebase listeners to monitor changes in the game's state and player list.
+         * - Listens to `gameRef` for overall game status (e.g., 'waiting', 'playing', lobby closed).
+         *   - If the lobby no longer exists, shows the "lobby closed" prompt.
+         *   - If game status changes to 'playing', shows the "game starting" prompt with a join link.
+         *   - Updates leader controls and start button visibility based on leader status and game status.
+         *   - Updates selected question set display and enables/disables radio buttons.
+         * - Listens to `playersRef` for changes in the list of connected players.
+         *   - Updates the UI player list via `updatePlayerListUI`.
+         *   - Calls `handleOnDisconnectLogic` (though its implementation is not shown).
+         * Handles errors from listeners by showing relevant prompts or alerts.
+         */
+        function attachFirebaseListeners() {
+            if (!gameRef || !playersRef) {
+                console.error("Références Firebase invalides, listeners non attachés.");
+                 showLobbyClosed("Erreur interne: Impossible de surveiller le lobby.");
+                return;
+            }
+            console.log("Attachement des listeners Firebase (Lobby)...");
+
+            // Listener pour l'état général du jeu
+            gameStatusListener = gameRef.on('value', (snapshot) => {
+                 console.log("Listener gameRef (Lobby): Données reçues.");
+                if (!snapshot.exists()) {
+                    console.log("Le lobby n'existe plus (détecté par gameRef).");
+                    // iOS workaround
+                    showLobbyClosed(`Le lobby "${gameId}" a été fermé ou n'existe plus.`);
+                    return;
+                }
+
+                const gameData = snapshot.val();
+                leaderId = gameData.leaderId;
+                isLeader = (currentUserId === leaderId);
+                const currentStatus = gameData.status;
+
+                const currentSet = gameData.selectedQuestionSet || 'mix';
+                questionSetRadios.forEach(radio => {
+                    radio.checked = (radio.value === currentSet);
+                    radio.disabled = !isLeader || currentStatus !== 'waiting'; // Désactiver si pas leader ou jeu démarré
+                });
+
+                if (currentStatus === 'playing') {
+                    console.log("Statut 'playing' détecté.");
+                    // iOS workaround
+                    const gameUrl = generateRedirectUrl('game', { gameId, userId: currentUserId, pseudo: currentUserPseudo });
+                     if (gameUrl) {
+                        showGameStartingPrompt(gameUrl); // Passer l'URL à la fonction
+                     } else {
+                         showAlertLobby("La partie commence, mais erreur interne pour créer le lien de jeu.", "error");
+                     }
+                    return;
+                }
+
+                // Si on est toujours en 'waiting'
+                console.log("Statut 'waiting'. Mise à jour UI lobby.");
+                lobbyContentDiv.style.display = 'block'; // Assurer que le lobby est visible
+                gameStartingPromptDiv.style.display = 'none';
+                lobbyClosedPromptDiv.style.display = 'none';
+
+                startGameBtn.disabled = false; // Réactiver au cas où
+                if (isLeader && currentStatus === 'waiting') { // Afficher seulement si leader et en attente
+                    leaderControlsDiv.style.display = 'block';
+                    startGameBtn.style.display = 'block'; 
+                    if (!afkCheckInterval) startAfkCheck();
+                } else {
+                    leaderControlsDiv.style.display = 'none';
+                    startGameBtn.style.display = 'none'; 
+                    if (afkCheckInterval) { clearInterval(afkCheckInterval); afkCheckInterval = null; } 
+                }
+                
+            }, (error) => {
+                console.error("Erreur listener Firebase gameRef:", error);
+                // iOS workaround
+                showLobbyClosed(`Erreur critique de connexion au lobby: ${error.message}`);
+            });
+
+            // Listener pour la liste des joueurs
+            playersListener = playersRef.on('value', (snapshot) => {
+                 if (!gameStatusListener) { console.log("Listener joueurs: Ignoré (statut inactif)."); return; } // Si jeu démarré ou lobby fermé
+                 console.log("Listener playersRef (Lobby): Données reçues.");
+                 const playersData = snapshot.val();
+                 updatePlayerListUI(playersData);
+                 handleOnDisconnectLogic(playersData);
+            }, (error) => {
+                 console.error("Erreur listener Firebase playersRef:", error);
+                 showAlertLobby(`Erreur chargement liste joueurs: ${error.message}`, 'warning');
+            });
+        }
+
+         /**
+         * Displays a prompt indicating that the game is starting.
+         * It cleans up lobby-specific resources (listeners, timers) and provides a link for the user to join the game.
+         * @param {string} gameUrl - The URL to join the started game.
+         */
+        function showGameStartingPrompt(gameUrl) {
+             console.log("Affichage invite pour rejoindre partie démarrée.");
+             cleanupBeforeRedirect(); // Nettoyer les listeners/timers du lobby
+
+             // Configurer le lien AVANT de l'afficher
+             joinStartedGameLink.href = gameUrl;
+
+             // Afficher l'invite et cacher le contenu du lobby
+             lobbyContentDiv.style.display = 'none';
+             lobbyClosedPromptDiv.style.display = 'none';
+             gameStartingPromptDiv.style.display = 'block';
+
+             // Pas besoin d'attacher d'event listener JS, le lien <a> gère la navigation.
+        }
+
+        /**
+         * Displays a prompt indicating that the lobby has been closed or an error has occurred.
+         * It cleans up resources, shows a message, and provides a link to return to the home page.
+         * @param {string} message - The message to display in the prompt.
+         * @param {string} [homeUrl=null] - An optional pre-generated URL for the home link. If not provided, it's generated.
+         */
+        function showLobbyClosed(message, homeUrl = null) {
+            console.log("Affichage invite lobby fermé/erreur:", message);
+            cleanupBeforeRedirect(); // Nettoyer tout
+
+            lobbyClosedText.textContent = message;
+
+            // Générer l'URL de retour si non fournie (ex: pour erreurs internes)
+            if (!homeUrl) {
+                 homeUrl = getHomeUrl(null, "Retour suite à une erreur/fermeture du lobby.");
+            }
+
+            // Configurer le lien de retour AVANT d'afficher
+            if (homeUrl) {
+                backHomeLink.href = homeUrl;
+                backHomeLink.style.display = 'flex'; // Afficher le lien
+            } else {
+                // Si même l'URL de base n'est pas dispo, cacher le lien
+                backHomeLink.style.display = 'none';
+                 // Ajouter un message indiquant l'impossibilité de revenir
+                lobbyClosedText.textContent += " Impossible de générer le lien de retour.";
+            }
+
+            // Afficher le prompt et cacher les autres contenus
+            lobbyContentDiv.style.display = 'none';
+            gameStartingPromptDiv.style.display = 'none';
+            lobbyClosedPromptDiv.style.display = 'block';
+        }
+
+
+         // --- Initialisation au chargement ---
+        /**
+         * Event listener for the 'DOMContentLoaded' event.
+         * This is the main entry point for the lobby page script.
+         * It performs the following actions:
+         * 1. Displays the game ID.
+         * 2. Shows a loader and disables interactive buttons.
+         * 3. Fetches the web application's base URL (`fetchWebAppUrl`).
+         * 4. If the base URL is obtained:
+         *    a. Initializes Firebase (`initializeFirebase`).
+         *    b. If Firebase initializes successfully:
+         *       i. Attaches Firebase listeners (`attachFirebaseListeners`).
+         *       ii. Starts the heartbeat mechanism (`startHeartbeat`).
+         *       iii. Sets up initial `onDisconnect` logic (`handleOnDisconnectLogic`).
+         * 5. If the base URL cannot be fetched, shows a critical error prompt.
+         * 6. Attaches an event listener to the question set options for the leader to change game settings.
+         * 7. Attaches an event listener to the "Start Game" button for the leader.
+         * 8. Attaches an event listener to the "Leave Lobby" button.
+         */
+        document.addEventListener('DOMContentLoaded', async () => {
+            gameCodeDisplay.textContent = gameId;
+            loaderArea.style.display = 'block';
+            // Désactiver boutons initialement
+            startGameBtn.disabled = true;
+            leaveBtn.disabled = true;
+
+            // Change URL first ***
+            await fetchWebAppUrl(); // Wait for the URL to be ready (or fail)
+
+            // Initialise Firebase ONLY if the URL is available 
+            if (webAppBaseUrl) {
+                 if (initializeFirebase()) {
+                    attachFirebaseListeners();
+                    startHeartbeat();
+                    handleOnDisconnectLogic({}); // Config initiale onDisconnect
+                 }
+                 // leaveBtn is already activated in fetchWebAppUrl() if success
+            } else {
+                 showLobbyClosed("Erreur critique: Impossible de charger la configuration initiale de l'application.");
+                 loaderArea.style.display = 'none'; // Hide loader
+            }
+
+            // Event listener for changes in question set options (leader only).
+            // Updates the 'selectedQuestionSet' in Firebase when the leader makes a choice.
+            questionSetOptionsDiv.addEventListener('change', (event) => {
+                if (event.target.name === 'questionSet' && isLeader) {
+                    const selectedSet = event.target.value;
+                    console.log(`Leader a choisi le set: ${selectedSet}`);
+                    questionSetStatus.textContent = 'Sauvegarde...';
+                    questionSetRadios.forEach(r => r.disabled = true); // Désactiver pendant la sauvegarde
+
+                    gameRef.update({ selectedQuestionSet: selectedSet })
+                        .then(() => {
+                            console.log("Set de questions mis à jour dans Firebase.");
+                            questionSetStatus.textContent = `Set '${selectedSet}' sélectionné.`;
+                            setTimeout(() => { questionSetStatus.textContent = ''; }, 2000); // Effacer message après 2s
+                        })
+                        .catch(error => {
+                            console.error("Erreur sauvegarde set questions:", error);
+                            questionSetStatus.textContent = 'Erreur sauvegarde.';
+                            // Remettre la sélection précédente ? Ou laisser tel quel et l'utilisateur réessaie.
+                        })
+                        .finally(() => {
+                            // Réactiver seulement si on est toujours leader et en attente
+                            const stillWaiting = localGameState?.status === 'waiting'; // Vérifier l'état actuel
+                            questionSetRadios.forEach(r => r.disabled = !isLeader || !stillWaiting);
+                        });
+                }
+            });
+
+            // Event listener for the "Start Game" button.
+            // If the current user is the leader, it updates the game status to 'playing' in Firebase.
+            startGameBtn.addEventListener('click', () => {
+                if (!isLeader || !gameRef) return;
+                console.log("Clic leader sur 'Démarrer'.");
+                startGameBtn.disabled = true;
+                startGameBtn.textContent = "Démarrage...";
+                gameRef.update({ status: 'playing' })
+                    .then(() => console.log("Statut mis à jour à 'playing'."))
+                    .catch(error => {
+                        console.error("Erreur lors du démarrage du jeu:", error);
+                        showAlertLobby(`Impossible de démarrer la partie: ${error.message}`, "error");
+                        startGameBtn.disabled = false; // Réactiver si échec
+                        startGameBtn.textContent = "Démarrer la Partie";
+                    });
+            });
+
+            // Event listener for the "Leave Lobby" button.
+            // Calls the leaveLobby function.
+            leaveBtn.addEventListener('click', leaveLobby);
+        });
+
+        /**
+         * Event listener for the 'beforeunload' event (e.g., when the user closes the tab/browser).
+         * Logs a message indicating that Firebase `onDisconnect` handlers are expected to manage the player's departure.
+         */
+        window.addEventListener('beforeunload', () => {
+             console.log("Événement beforeunload (Lobby). onDisconnect gère la sortie.");
+        });
+
+    </script>
+</body>
+</html>
