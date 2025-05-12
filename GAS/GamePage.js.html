@@ -167,9 +167,9 @@
             if (!snapshot.exists()) {
                 if (gameStatusListener) {
                     console.log("Partie terminée (ref inexistante).");
-                    alert(`La partie ${gameId} a été terminée.`);
+                    alert(`Game ${gameId} is over!`);
                     cleanupListenersAndDisconnect();
-                    getWebAppUrl().then(baseUrl => window.top.location.href = `${baseUrl}?page=home&message=${encodeURIComponent(`Partie ${gameId} terminée.`)}`).catch(() => window.top.location.href = window.location.origin);
+                    getWebAppUrl().then(baseUrl => window.top.location.href = `${baseUrl}?page=home&message=${encodeURIComponent(`Game ${gameId} is over.`)}`).catch(() => window.top.location.href = window.location.origin);
                 }
                 return;
             }
@@ -189,7 +189,7 @@
     
         }, (error) => {
             console.error("Erreur listener gameRef:", error);
-            alert("Erreur connexion serveur jeu.");
+            alert("Game server connection error!");
         });
     
         // --- Listener on player list ---
@@ -199,9 +199,9 @@
     
             if (!localPlayersData[currentUserId] && playersListener) {
                  console.log("Joueur actuel retiré.");
-                 alert("Vous avez été retiré de la partie.");
+                 alert("You’ve been removed from the game!");
                  cleanupListenersAndDisconnect();
-                 getWebAppUrl().then(baseUrl => window.top.location.href = `${baseUrl}?page=home&message=${encodeURIComponent(`Retiré de la partie ${gameId}.`)}`).catch(() => window.top.location.href = window.location.origin);
+                 getWebAppUrl().then(baseUrl => window.top.location.href = `${baseUrl}?page=home&message=${encodeURIComponent(`You’ve been removed from ${gameId}! See ya!`)}`).catch(() => window.top.location.href = window.location.origin);
                  return;
             }
     
@@ -209,7 +209,7 @@
     
         }, (error) => {
             console.error("Erreur listener playersRef:", error);
-            alert("Erreur connexion liste joueurs.");
+            alert("Player list connection failed! ");
         });
     }
     
@@ -226,7 +226,7 @@
         playerListElement.innerHTML = '';
     
         if (!localPlayersData || Object.keys(localPlayersData).length === 0) {
-            playerListElement.innerHTML = '<li class="loading">Aucun joueur...</li>';
+            playerListElement.innerHTML = '<li class="loading">No players... yet!</li>';
             return;
         }
     
@@ -251,7 +251,7 @@
     
             const nameSpan = document.createElement('span');
             nameSpan.classList.add('player-name-list');
-            nameSpan.textContent = player.pseudo || 'Joueur anonyme';
+            nameSpan.textContent = player.pseudo || 'Anonyme';
             li.appendChild(nameSpan); // Append name after avatar
     
             if (!isConnected) li.classList.add('disconnected');
@@ -304,7 +304,7 @@
         if (!elementToShow) {
             console.warn("Phase inconnue:", phaseToShow);
              if (waitingAreaDiv) waitingAreaDiv.classList.add('active');
-             if (waitingMessage) waitingMessage.textContent = "État inconnu...";
+             if (waitingMessage) waitingMessage.textContent = "Unknown status...";
         }
     }
     
@@ -315,7 +315,7 @@
      * Updates vote status message.
      */
     function renderVotingPhase() {
-        currentQuestionElement.textContent = localGameState.question || "Chargement...";
+        currentQuestionElement.textContent = localGameState.question || "Loading...";
         playerVoteOptionsDiv.innerHTML = '';
         hasVotedThisRound = !!(localGameState.votes && localGameState.votes[currentUserId]);
         const myVoteTargetId = localGameState.votes?.[currentUserId];
@@ -338,10 +338,10 @@
     
             const nameSpan = document.createElement('span'); // Wrap name
             nameSpan.classList.add('player-name-vote');
-            nameSpan.textContent = player.pseudo || 'Inconnu';
+            nameSpan.textContent = player.pseudo || 'Anonyme';
             if (!isTargetConnected) {
                btn.classList.add('target-disconnected');
-               nameSpan.textContent += " (Déco)"; // Add status to name span
+               nameSpan.textContent += " (Offline)"; // Add status to name span
             }
             btn.appendChild(nameSpan); // Append name after avatar
     
@@ -354,11 +354,11 @@
         const votes = localGameState.votes || {};
         const connectedVotesCount = Object.keys(votes).filter(id => localPlayersData[id]?.isConnected).length;
         if (hasVotedThisRound) {
-            const votedForPseudo = localPlayersData[myVoteTargetId]?.pseudo || 'un joueur';
+            const votedForPseudo = localPlayersData[myVoteTargetId]?.pseudo || 'a player';
             const remainingVotes = Math.max(0, connectedPlayersCount - connectedVotesCount);
-            voteStatusElement.textContent = `Vous avez voté pour ${votedForPseudo}. Attente de ${remainingVotes} vote(s)...`;
+            voteStatusElement.textContent = `You’ve voted for ${votedForPseudo}! Waiting on ${remainingVotes} more vote(s)...`;
         } else {
-            voteStatusElement.textContent = `Votez ! ${connectedVotesCount} / ${connectedPlayersCount} joueurs connectés ont voté.`;
+            voteStatusElement.textContent = `Vote time! ${connectedVotesCount}/${connectedPlayersCount} players voted!`;
         }
     }
     
@@ -387,7 +387,7 @@
         }
     
         if (Object.keys(results).length === 0) {
-            resultsDisplayDiv.innerHTML = '<p>Aucun vote enregistré.</p>';
+            resultsDisplayDiv.innerHTML = '<p>No votes recorded...</p>';
             if (playAnimation) resultsAnimationPlayedForRound = currentRound;
         } else {
             const sortedResults = Object.entries(results).sort(([, a], [, b]) => b - a);
@@ -453,16 +453,16 @@
                     let canToss = (currentUserId === playerId && !tossData && !activeToss);
     
                     if (tossData) {
-                        statusSpan.textContent = `Résultat : ${tossData.result === 'HEADS' ? 'FACE !' : 'PILE !'}`;
+                        statusSpan.textContent = `Results : ${tossData.result === 'HEADS' ? 'HEADS !' : 'TAILS !'}`;
                     } else if (activeToss) {
-                         statusSpan.textContent = activeToss.tossingPlayerId === playerId ? "Lancement..." : `Attente lancer de ${activeToss.tossingPlayerPseudo}...`;
+                         statusSpan.textContent = activeToss.tossingPlayerId === playerId ? "Tossing..." : `Hold tight! ${activeToss.tossingPlayerPseudo} is about to toss... `;
                     } else {
-                        statusSpan.textContent = (currentUserId === playerId) ? "Prêt à lancer ?" : "En attente du lancer...";
+                        statusSpan.textContent = (currentUserId === playerId) ? "Ready to toss?" : "Waiting for the toss...";
                     }
                     tossSectionDiv.appendChild(statusSpan);
     
                     if (canToss) {
-                        const tossBtn = document.createElement('button'); tossBtn.className = 'toss-trigger-button'; tossBtn.dataset.targetPlayerId = playerId; tossBtn.textContent = 'Lancer';
+                        const tossBtn = document.createElement('button'); tossBtn.className = 'toss-trigger-button'; tossBtn.dataset.targetPlayerId = playerId; tossBtn.textContent = 'Toss the coin!';
                         tossSectionDiv.appendChild(tossBtn);
                     }
                     resultItemDiv.appendChild(tossSectionDiv);
@@ -473,17 +473,17 @@
                         const ul = document.createElement('ul'); const votes = localGameState.votes || {}; let revealedCount = 0;
                         Object.entries(votes).forEach(([voterId, votedId]) => {
                             if (votedId === playerId) {
-                                const voter = localPlayersData[voterId]; const voterName = voter?.pseudo || 'Joueur parti';
-                                const li = document.createElement('li'); li.innerHTML = `Votant : <strong>${voterName}</strong> ${!voter?.isConnected ? '(Déco)' : ''}`;
+                                const voter = localPlayersData[voterId]; const voterName = voter?.pseudo || 'Player left';
+                                const li = document.createElement('li'); li.innerHTML = `Voter: <strong>${voterName}</strong> ${!voter?.isConnected ? '(Offline)' : ''}`;
                                 ul.appendChild(li); revealedCount++;
                             }
                         });
-                        revealedDiv.innerHTML = `<h6>Votes révélés :</h6>`;
-                        if (revealedCount > 0) revealedDiv.appendChild(ul); else revealedDiv.innerHTML += `<i>Personne n'a voté pour ${player.pseudo}.</i>`;
+                        revealedDiv.innerHTML = `<h6>Votes revealed:</h6>`;
+                        if (revealedCount > 0) revealedDiv.appendChild(ul); else revealedDiv.innerHTML += `<i>Nobody voted for ${player.pseudo}!</i>`;
                         revealedDiv.style.display = 'block'; resultItemDiv.appendChild(revealedDiv);
                     } else if (tossData && !tossData.revealVotes) {
                         const revealedDiv = document.createElement('div'); revealedDiv.className = 'revealed-votes';
-                        revealedDiv.innerHTML = `<h6>Résultat :</h6><i>Les votes restent secrets (Pile) !</i>`;
+                        revealedDiv.innerHTML = `<h6>Results :</h6><i>Votes remain secret (Tails)! 🤫</i>`;
                         revealedDiv.style.display = 'block'; resultItemDiv.appendChild(revealedDiv);
                     }
                 }
@@ -512,10 +512,10 @@
     
         // Ready Button
         nextRoundBtn.disabled = isReadyForNext;
-        nextRoundBtn.textContent = isReadyForNext ? "Prêt !" : "Prêt pour la prochaine manche";
+        nextRoundBtn.textContent = isReadyForNext ? "Ready!" : "Ready for the next round!";
         nextRoundBtn.classList.toggle('ready', isReadyForNext);
         const connectedReadyCount = Object.keys(readyForNext).filter(id => localPlayersData[id]?.isConnected).length;
-        readyStatusElement.textContent = `${connectedReadyCount} / ${connectedPlayersCount} joueurs connectés prêts.`;
+        readyStatusElement.textContent = `${connectedReadyCount} / ${connectedPlayersCount} players are ready !`;
     }
     
     // --- Coin Toss Popup Functions ---
@@ -530,7 +530,7 @@
         if (!coinTossPopup || isPopupVisible) {
             // Si déjà visible, peut-être mettre à jour le nom si c'est un autre lanceur ? Rare.
             if (isPopupVisible && lastDisplayedTosserId !== tosserId) {
-                 popupTosserNameElement.innerHTML = `<strong>${tosserPseudo}</strong> lance la pièce...`;
+                 popupTosserNameElement.innerHTML = `<strong>${tosserPseudo}</strong> toss the coin... `;
                  lastDisplayedTosserId = tosserId;
             }
             return;
@@ -549,10 +549,10 @@
             popupTosserNameElement.appendChild(img);
         }
         const nameText = document.createElement('span'); // Add name text separately
-        nameText.innerHTML = `<strong>${tosserPseudo}</strong> lance la pièce...`;
+        nameText.innerHTML = `<strong>${tosserPseudo}</strong> toss the coin...`;
         popupTosserNameElement.appendChild(nameText);
         // ----------------------------------
-        popupStatusElement.textContent = "Lancement en cours...";
+        popupStatusElement.textContent = "Tossing...";
         popupCoinElement.style.transform = 'rotateX(45deg)'; // Reset position
         popupCoinElement.style.display = 'block';
         popupCoinElement.classList.remove('animate');
@@ -623,17 +623,17 @@
         const iAmLeader = (currentUserId === leaderId);
         console.log(`Clic sur 'Quitter'. ${iAmLeader ? "Leader." : "Joueur."}`);
         leaveGameBtn.disabled = true;
-        leaveGameBtn.textContent = "Déconnexion...";
+        leaveGameBtn.textContent = "Disconnecting...";
     
         cleanupListenersAndDisconnect(); // Nettoyer d'abord
     
         try {
-            let redirectMessage = `Vous avez quitté la partie ${gameId}.`;
+            let redirectMessage = `You’ve left game ${gameId}! 👋 See you next time!`;
             if (iAmLeader) {
                 console.log("Leader quitte. Suppression partie...");
                 if (gameRef) {
                     await gameRef.remove();
-                    redirectMessage = `Partie ${gameId} terminée (leader parti).`;
+                    redirectMessage = `Game ${gameId} is over (leader left)!`;
                 }
             } else {
                 console.log("Joueur quitte.");
@@ -645,13 +645,13 @@
             window.top.location.href = `${baseUrl}?page=home&message=${encodeURIComponent(redirectMessage)}`;
         } catch (error) {
             console.error("Erreur en quittant:", error);
-            alert("Erreur en quittant la partie.");
+            alert("Error leaving the game!");
             leaveGameBtn.disabled = false; // Réactiver si erreur
-            leaveGameBtn.textContent = "Quitter";
+            leaveGameBtn.textContent = "Leave Game";
              // Tentative de redirection même si erreur DB
              try {
                  const baseUrl = await getWebAppUrl();
-                 window.top.location.href = `${baseUrl}?page=home&error=${encodeURIComponent("Erreur en quittant.")}`;
+                 window.top.location.href = `${baseUrl}?page=home&error=${encodeURIComponent("Error leaving the game!")}`;
              } catch(e){ window.top.location.href = window.location.origin; }
         }
      }
@@ -694,7 +694,7 @@
             })
             .catch(error => {
                 console.error("Firebase vote write FAILED:", error);
-                alert("Erreur lors de l'enregistrement de votre vote. Veuillez réessayer.");
+                alert("Oops! Error recording your vote! Please try again!");
                 // Re-enable buttons ONLY IF the write truly failed AND the state hasn't updated yet
                 // Safest might be to just let the next Firebase update fix the UI state
                 // But for immediate feedback on failure:
@@ -715,18 +715,18 @@
      */
     function handleNextRoundClick() { 
         if (isReadyForNext) return;
-        console.log("Clic 'Prêt prochaine manche'");
+        console.log("Click 'Ready for the next round'");
         nextRoundBtn.disabled = true;
-        nextRoundBtn.textContent = "Prêt !";
+        nextRoundBtn.textContent = "Ready !";
         nextRoundBtn.classList.add('ready');
     
         gameStateRef.child('readyForNextRound').child(currentUserId).set(true)
             .then(() => console.log("Statut 'Prêt' envoyé."))
             .catch(error => {
                 console.error("Erreur envoi 'Prêt':", error);
-                alert("Erreur enregistrement statut 'Prêt'.");
+                alert("Error recording 'Ready' status.");
                 nextRoundBtn.disabled = false;
-                nextRoundBtn.textContent = "Prêt pour la prochaine manche";
+                nextRoundBtn.textContent = "Ready for the next round";
                 nextRoundBtn.classList.remove('ready');
             });
     }
@@ -759,7 +759,7 @@
          }
          if (localGameState.activeToss) {
               console.warn("Un autre lancer est déjà en cours.");
-              alert(`Attendez la fin du lancer de ${localGameState.activeToss.tossingPlayerPseudo}...`);
+              alert(`Wait for the end of ${localGameState.activeToss.tossingPlayerPseudo}'s throw...`);
               // Le bouton devrait déjà être caché/désactivé par renderResultsPhase, mais sécurité
               button.disabled = true;
               return;
@@ -767,7 +767,7 @@
     
          // Désactiver le bouton immédiatement
          button.disabled = true;
-         button.textContent = 'Lancement...';
+         button.textContent = 'Tossing...';
     
          // Triggering Toss
          console.log(`Déclenchement du lancer par ${currentUserPseudo} (ID: ${currentUserId})`);
@@ -784,11 +784,11 @@
              })
              .catch(error => {
                  console.error("Erreur lors du déclenchement du lancer (écriture activeToss):", error);
-                 alert("Erreur lors du lancement de la pièce. Veuillez réessayer.");
+                 alert("Error during coin toss. Please try again.");
                  // Réactiver le bouton si l'écriture échoue
                  if(button) { // Vérifier si le bouton existe toujours
                     button.disabled = false;
-                    button.textContent = 'Lancer';
+                    button.textContent = 'Toss the coin!';
                  }
              });
     }
@@ -818,7 +818,6 @@
          leaveGameBtn = document.getElementById('leaveGameBtn');
          waitingMessage = document.getElementById('waiting-message');
          pauseMessageElement = document.getElementById('pause-message');
-         // Nouveaux éléments popup
          coinTossPopup = document.getElementById('coin-toss-popup');
          popupTosserNameElement = document.getElementById('popup-tosser-name');
          popupCoinElement = document.getElementById('popup-coin');
@@ -826,7 +825,7 @@
     
          if(/*!gameIdDisplay||*/  !resultsDisplayDiv || !coinTossPopup || !popupStatusElement) {
              console.error("DOM non prêt ou éléments essentiels manquants!");
-             alert("Erreur critique: Impossible de charger l'interface du jeu.");
+             alert("Critical error: Unable to load the game interface.");
              return;
          }
          /*gameIdDisplay.textContent = gameId;*/
@@ -859,16 +858,16 @@
                 })
                 .catch(error => {
                     console.error("Erreur connexion/onDisconnect:", error);
-                    alert("Erreur connexion partie. Redirection...");
+                    alert("Error connecting to the game. Redirecting...");
                     getWebAppUrl().then(baseUrl => {
-                        window.top.location.href = `${baseUrl}?page=home&error=${encodeURIComponent("Impossible de rejoindre.")}`;
+                        window.top.location.href = `${baseUrl}?page=home&error=${encodeURIComponent("Impossible to join")}`;
                     }).catch(() => window.top.location.href = window.location.origin);
                 });
         } catch (error) {
             console.error("Erreur init Firebase:", error);
             alert("Erreur critique Firebase.");
              getWebAppUrl().then(baseUrl => {
-                window.top.location.href = `${baseUrl}?page=home&error=${encodeURIComponent("Erreur Firebase.")}`;
+                window.top.location.href = `${baseUrl}?page=home&error=${encodeURIComponent("Firebase error")}`;
             }).catch(() => window.top.location.href = window.location.origin);
         }
     
@@ -910,7 +909,7 @@
                     const randomOutcome = Math.random();
                     const result = randomOutcome < 0.5 ? 'HEADS' : 'TAILS';
                     const revealVotes = (result === 'HEADS');
-                    const resultText = `Résultat : ${result === 'HEADS' ? 'FACE !' : 'PILE !'}`;
+                    const resultText = `Result: ${result === 'HEADS' ? 'HEADS!' : 'TAILS!'}`;
                     console.log(`Lanceur ${currentUserId}: Résultat ${result}. Ecriture DB...`);
     
                     // Mettre à jour popup locale IMMÉDIATEMENT (pour le lanceur)
@@ -939,12 +938,12 @@
              if (isPopupVisible && lastDisplayedTosserId === finishedTosserId) {
                  const finalTossData = coinTosses[finishedTosserId];
                  if (finalTossData) {
-                     const resultText = `Résultat : ${finalTossData.result === 'HEADS' ? 'FACE !' : 'PILE !'}`;
+                     const resultText = `Results : ${finalTossData.result === 'HEADS' ? 'HEADS !' : 'TAILS !'}`;
                      // Met à jour la popup pour fixer la pièce sur la bonne face
                      updatePopupWithFinalResult(resultText, finalTossData.result);
                  } else {
                      console.warn(`Résultat final pour ${finishedTosserId} non trouvé dans coinTosses!`);
-                     popupStatusElement.textContent = "Terminé."; // Fallback
+                     popupStatusElement.textContent = "Finished."; // Fallback
                  }
              } else if (isPopupVisible && lastDisplayedTosserId !== finishedTosserId) {
                  console.warn(`Popup visible mais pour ${lastDisplayedTosserId}, pas pour ${finishedTosserId} qui vient de finir.`);
@@ -976,7 +975,7 @@
         // Pause Management & Leader Logic 
         let pauseGame = connectedPlayersCount < MIN_CONNECTED_PLAYERS_TO_PROCEED && currentPhase !== 'waiting_start';
         pauseMessageElement.style.display = pauseGame ? 'block' : 'none';
-        if (pauseGame) pauseMessageElement.textContent = `Jeu en pause (${connectedPlayersCount}/${MIN_CONNECTED_PLAYERS_TO_PROCEED} joueurs). En attente...`;
+        if (pauseGame) pauseMessageElement.textContent = `Game paused(${connectedPlayersCount}/${MIN_CONNECTED_PLAYERS_TO_PROCEED}players). Waiting...`;
     
         // Le leader n'agit que si jeu non en pause ET aucun lancer en cours
         if (isLeader && !pauseGame && !activeToss) {
@@ -1014,9 +1013,9 @@
                     case 'waiting_start':
                         showPhase('waiting');
                         waitingMessage.textContent = connectedPlayersCount >= MIN_CONNECTED_PLAYERS_TO_PROCEED
-                            ? "Préparation..." : `Attente joueurs (${connectedPlayersCount}/${MIN_CONNECTED_PLAYERS_TO_PROCEED})...`;
+                            ? "Preparing..." : `Waiting for players (${connectedPlayersCount}/${MIN_CONNECTED_PLAYERS_TO_PROCEED})...`;
                         break;
-                    default: showPhase('waiting'); waitingMessage.textContent = "Chargement..."; break;
+                    default: showPhase('waiting'); waitingMessage.textContent = "Loading..."; break;
                  }
             }
         } else {

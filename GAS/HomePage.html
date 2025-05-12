@@ -536,7 +536,7 @@
              joinGameBtn.disabled = false;
          } catch (error) {
              console.error("Échec de la récupération de l'URL de base:", error);
-             showAlert("Erreur critique: Impossible de contacter le serveur pour la navigation. Veuillez rafraîchir.", 'error');
+             showAlert("Uh-oh! 🚨 Server’s gone on a snack break—can’t fetch your vibes right now! Hit refresh and let’s try again!", 'error');
              // Garder les boutons désactivés car la navigation échouera
              createGameBtn.disabled = true;
              joinGameBtn.disabled = true;
@@ -652,7 +652,7 @@
        */
       function populateAvatarOptions() {
         if (typeof AVATAR_LIST === 'undefined' || !AVATAR_LIST || AVATAR_LIST.length === 0) {
-          avatarOptionsContainer.innerHTML = '<span class="loading-avatars">Erreur: Avatars non trouvés.</span>';
+          avatarOptionsContainer.innerHTML = '<span class="loading-avatars">Oops! 🌀 Avatars vanished—try again!</span>';
           console.error("AVATAR_LIST is not defined or empty.");
           return;
         }
@@ -730,9 +730,9 @@
         const selectedAvatarSrc = selectedAvatarSrcInput.value;
 
         // Validations
-        if (!pseudo) { showAlert("Veuillez entrer un pseudo.", 'error'); return; }
-        if (!selectedAvatarSrc) { showAlert("Veuillez choisir un avatar.", 'error'); return; }
-        if (!webAppBaseUrl) { showAlert("L'application n'est pas prête, URL de base manquante.", 'error'); return;} 
+        if (!pseudo) { showAlert("Enter your nickname to get started! ✨", 'error'); return; }
+        if (!selectedAvatarSrc) { showAlert("Please choose an avatar! 🎭", 'error'); return; }
+        if (!webAppBaseUrl) { showAlert("Hold up! 🚧 App’s not ready—missing its base URL! Try again", 'error'); return;} 
 
         // Update UI to indicate loading state
         createGameBtn.textContent = "Creating...";
@@ -765,15 +765,15 @@
           // Instead of direct redirection, show a confirmation link (iOS workaround)
           const lobbyUrl = generateRedirectUrl('lobby', newGameId, newUserId, pseudo);
           if (lobbyUrl) {
-              showRedirection(`Partie "${newGameId}" créée ! Cliquez ci-dessous pour entrer dans le lobby.`, lobbyUrl);
+              showRedirection(`Game "${newGameId}" is live! 🎉 Tap below to enter the lobby!`, lobbyUrl);
           } else {
-              showAlert("Erreur lors de la préparation de la redirection.", 'error');
+              showAlert("Uh-oh! Trouble getting the redirect ready!", 'error');
               resetUI(); // Reset UI on error
           }
 
         } catch (error) {
             console.error("Erreur Création Firebase:", error);
-            showAlert("Erreur lors de la création de la partie.", 'error');
+            showAlert("Game creation failed! ⚠️ Try again!", 'error');
             resetUI(); // Réinitialiser l'UI
         }
       });
@@ -785,10 +785,10 @@
         const selectedAvatarSrc = selectedAvatarSrcInput.value;
 
         // Validations
-        if (!pseudo) { showAlert("Veuillez entrer un pseudo.", 'error'); return; }
-        if (!selectedAvatarSrc) { showAlert("Veuillez choisir un avatar.", 'error'); return; } 
-        if (!gameId) { showAlert("Veuillez entrer un code de partie.", 'error'); return; }
-        if (!webAppBaseUrl) { showAlert("L'application n'est pas prête, URL de base manquante.", 'error'); return;} // Sécurité
+        if (!pseudo) { showAlert("Enter your nickname to get started! ✨", 'error'); return; }
+        if (!selectedAvatarSrc) { showAlert("Please choose an avatar! 🎭", 'error'); return; }
+        if (!gameId) { showAlert("Need a game code to jump in! 🔑", 'error'); return; }
+        if (!webAppBaseUrl) { showAlert("Hold up! 🚧 App’s not ready—missing its base URL! Try again", 'error'); return;} 
 
         // Update UI to indicate loading state
         joinGameBtn.textContent = "Connecting...";
@@ -801,7 +801,7 @@
             const snapshot = await gameRef.once('value'); // Fetch game data once
 
             if (!snapshot.exists()) {
-                showAlert(`La partie "${gameId}" n'existe pas.`, 'error');
+                showAlert(`Whoopsi! The game "${gameId}" doesn’t exist!`, 'error');
                 resetUI();
                 return;
             }
@@ -812,7 +812,7 @@
 
             // Check if game is already finished
             if (gameStatus === 'finished') {
-                 showAlert(`La partie "${gameId}" est terminée.`, 'error');
+                 showAlert(`The game "${gameId}" is already finished...`, 'error');
                  resetUI();
                  return;
             }
@@ -835,14 +835,14 @@
                 // Determine target page based on game status (lobby or game)
                 const targetPage = (gameStatus === 'playing') ? 'game' : 'lobby';
                 targetUrl = generateRedirectUrl(targetPage, gameId, existingPlayerId, pseudo);
-                confirmationMsg = `Vous vous reconnectez à la partie "${gameId}". Cliquez ci-dessous pour continuer.`;
+                confirmationMsg = `Reconnecting to game "${gameId}"... 🎮 Click below to jump back in!`;
 
             } else {
                  // --- NEW PLAYER JOINING ---
                 console.log(`Pseudo "${pseudo}" non trouvé. Tentative de rejoindre.`);
                 // New players can only join if the game is in 'waiting' status
                 if (gameStatus !== 'waiting') {
-                    showAlert(`Impossible de rejoindre la partie "${gameId}" car elle est déjà commencée ou terminée.`, 'error');
+                    showAlert(`Can’t join game "${gameId}"—it’s already started or finished! Better luck next time!`, 'error');
                     resetUI();
                     return;
                 }
@@ -859,7 +859,7 @@
                 console.log(`${pseudo} (${newUserId}) a rejoint la partie ${gameId}.`);
 
                 targetUrl = generateRedirectUrl('lobby', gameId, newUserId, pseudo); // New players go to the lobby
-                confirmationMsg = `Vous avez rejoint la partie "${gameId}" ! Cliquez ci-dessous pour entrer dans le lobby.`;
+                confirmationMsg = `You’ve joined game "${gameId}"! 🎉 Tap below to enter the lobby!`;
             }
 
             // Show confirmation link (iOS workaround)
@@ -872,7 +872,7 @@
 
         } catch (error) {
             console.error("Erreur Rejoindre/Reconnecter Firebase:", error);
-            showAlert("Une erreur s'est produite pour rejoindre la partie.", 'error');
+            showAlert("Error joining the game! 🚫 Try again!", 'error');
             resetUI();
         }
       });

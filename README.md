@@ -1,4 +1,4 @@
-# Call Out 🫵 - Jeu Multijoueur en Temps Réel
+# Call Out 🫵 - Real-Time Multiplayer Game
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
@@ -6,73 +6,74 @@
   <img src="screenshots/LogoCallOut.png" alt="Logo" width="150"/>
 </p>
 
-**Call Out 🫵** est une application web multijoueur gratuite conçue pour animer vos soirées entre amis avec des votes interactifs du type "Qui de nous est le plus susceptible de...". Développée avec **Google Apps Script** et **Firebase Realtime Database**, elle fonctionne en temps réel sans serveur backend dédié.
+**Call Out 🫵** is a free multiplayer web application designed to liven up your evenings with friends through interactive "Who among us is most likely to..." type votes. Developed with **Google Apps Script** and **Firebase Realtime Database**, it operates in real-time without a dedicated backend server.
 
-🚀 Pourquoi ce projet est spécial :
-*   Il démontre qu'on peut créer une **web app complexe et gratuite** avec des outils accessibles.
-*   Le système de **lobby multijoueur** permet d'accueillir plusieurs joueurs et peut facilement servir de base à d'autres jeux en ligne.
-*   Une **expérience fluide en temps réel** grâce à Firebase : synchronisation des votes, avatars personnalisables, animation de lancer de pièce, etc.
+🚀 Why this project is special:
+*   It demonstrates that a **complex and free web app** can be created with accessible tools.
+*   The **multiplayer lobby system** can host multiple players and can easily serve as a foundation for other online games.
+*   A **smooth real-time experience** thanks to Firebase: vote synchronization, customizable avatars, coin toss animation, etc.
 
-📚 Ce projet m’a permis d’apprendre à développer un jeu en temps réel sur le web, à gérer des connexions multiples et à concevoir une interface interactive sans utiliser de backend lourd.
+📚 This project allowed me to learn how to develop a real-time web game, manage multiple connections, and design an interactive interface without using a heavy backend.
 
-🧪 L’app est testable en ligne via [Démo Call Out](https://script.google.com/macros/s/AKfycbzozmc1IhN_cuT7p9ccirAdfpFzP7ho6fqVRQ8WU9yNMrdYGtIWYwvt83eTTrYhM38S/exec), et peut être facilement hébergée par n’importe qui en suivant les instructions de ce README.
+🧪 The app is testable online via [Call Out Demo](https://script.google.com/macros/s/AKfycbzozmc1IhN_cuT7p9ccirAdfpFzP7ho6fqVRQ8WU9yNMrdYGtIWYwvt83eTTrYhM38S/exec), and can be easily hosted by anyone by following the instructions in this README.
 
 <p align="center">
-  <img src="screenshots/Splash screen.png" alt="Spalsh Screen"/>
+  <img src="screenshots/Splash screen.png" alt="Splash Screen"/>
 </p>
 
-## ✨ Fonctionnalités Principales
+## ✨ Main Features
 
-*   **Jeu Multijoueur en Temps Réel:** Synchronisation de l'état du jeu entre tous les participants via Firebase.
-*   **Système de Lobby:** Création et jonction de parties via des codes uniques.
-*   **Mécanisme de Vote Interactif:** Les joueurs votent pour répondre à des questions concernant les autres participants.
-*   **Sets de Questions Thématiques:** Le leader de la partie peut choisir parmi différents ensembles de questions (Gentil, Mix, Extrême).
-*   **Lancer de Pièce Animé:** Introduit un élément de hasard pour la révélation des votes.
-*   **Avatars Personnalisables:** Les joueurs peuvent choisir un avatar pour les représenter.
-*   **Gestion de la Présence des Joueurs:** Détection des connexions et déconnexions.
-*   **Déploiement Entièrement Gratuit:** Hébergé sur la plateforme Google Apps Script.
-*   **Extensibilité:** Facilité d'ajout de nouvelles questions et d'avatars.
+*   **Real-Time Multiplayer Game:** Game state synchronization among all participants via Firebase.
+*   **Lobby System:** Create and join games via unique codes.
+*   **Interactive Voting Mechanism:** Players vote to answer questions concerning other participants.
+*   **Thematic Question Sets:** The game leader can choose from different sets of questions (Gentle, Mix, Extreme).
+*   **Animated Coin Toss:** Introduces an element of chance for revealing votes.
+*   **Customizable Avatars:** Players can choose an avatar to represent themselves.
+*   **Player Presence Management:** Detection of connections and disconnections.
+*   **Entirely Free Deployment:** Hosted on the Google Apps Script platform.
+*   **Extensibility:** Easy to add new questions and avatars.
 
-## 🛠️ Architecture Technique
+## 🛠️ Technical Architecture
 
 *   **Backend:** Google Apps Script (GAS)
-*   **Base de Données:** Firebase Realtime Database
+*   **Database:** Firebase Realtime Database
 *   **Frontend:** HTML, CSS, JavaScript (Vanilla)
 *   **Configuration:** Google Apps Script PropertiesService
 
-## 📂 Structure du Dépôt
+## 📂 Repository Structure
 
-Ce dépôt est organisé comme suit :
+This repository is organized as follows:
 
-*   **/GAS**: Contient tous les fichiers de code destinés à être déployés sur Google Apps Script.
-    *   `Code.gs`: Script principal du backend.
-    *   `HomePage.html`, `LobbyPage.html`, `GamePage.html`: Pages HTML pour l'interface utilisateur.
-    *   `GamePage.css.html`: Styles CSS pour la page de jeu.
-    *   `GamePage.js.html`: Scripts JavaScript côté client pour la page du jeu.
-    *   `Questions.html`: Fichier HTML contenant la liste des questions du jeu.
-    *   `AvatarData.html`: Fichier HTML contenant la liste des avatars (généré ou configuré manuellement).
-*   **/Scripts**: Comprend le script Python utilitaire pour la génération d'avatars.
-    *   `generate_avatars.py`: Script pour convertir des images PNG en format Base64 et générer le fichier `AvatarData.html`.
-    *   `requirements.txt`: Liste des dépendances Python pour le script `generate_avatars.py`.
-*   **/Avatars**: Dossier destiné à contenir les images PNG sources pour la génération d'avatars via le script Python. (Ce dossier peut être initialement vide ou contenir des exemples).
+*   **/GAS**: Contains all code files intended for deployment on Google Apps Script.
+    *   `Code.gs`: Main backend script.
+    *   `HomePage.html`, `LobbyPage.html`, `GamePage.html`: HTML pages for the user interface.
+    *   `GamePage.css.html`: CSS styles for the game page.
+    *   `GamePage.js.html`: Client-side JavaScript scripts for the game page.
+    *   `Questions.html`: HTML file containing the list of game questions.
+    *   `AvatarData.html`: HTML file containing the list of avatars (generated or manually configured).
+*   **/Scripts**: Includes the utility Python script for avatar generation.
+    *   `generate_avatars.py`: Script to convert PNG images to Base64 format and generate the `AvatarData.html` file.
+    *   `requirements.txt`: List of Python dependencies for the `generate_avatars.py` script.
+*   **/Avatars**: Folder intended to contain source PNG images for avatar generation via the Python script. (This folder may initially be empty or contain examples).
+*   **/screenshots**: Folder containing images for this README.
 
-## 🚀 Guide de Déploiement
+## 🚀 Deployment Guide
 
-Pour déployer votre propre instance de Call Out 🫵, suivez ces étapes :
+To deploy your own instance of Call Out 🫵, follow these steps:
 
-**1. Prérequis:**
+**1. Prerequisites:**
 
-*   Un compte Google.
-*   Un projet Firebase actif ([firebase.google.com](https://firebase.google.com/)).
-*   Python 3.x installé localement (si vous souhaitez utiliser le script de génération d'avatars).
-*   Git (pour cloner ce dépôt). (si vous souhaitez utiliser le script de génération d'avatars).
+*   A Google account.
+*   An active Firebase project ([firebase.google.com](https://firebase.google.com/)).
+*   Python 3.x installed locally (if you wish to use the avatar generation script).
+*   Git (to clone this repository) (if you wish to use the avatar generation script).
 
-**2. Configuration de Firebase:**
+**2. Firebase Configuration:**
 
-*   Créez un nouveau projet Firebase ou utilisez un projet existant.
-*   Activez et configurez **Realtime Database**.
-    *   Lors de la création, choisissez une région appropriée.
-    *   **Règles de Sécurité (Important):** Pour le développement initial, vous pouvez utiliser des règles ouvertes. **Ces règles ne sont PAS SÉCURISÉES pour un environnement de production.**
+*   Create a new Firebase project or use an existing one.
+*   Enable and configure **Realtime Database**.
+    *   When creating, choose an appropriate region.
+    *   **Security Rules (Important):** For initial development, you can use open rules. **These rules are NOT SECURE for a production environment.**
         ```json
         {
           "rules": {
@@ -81,98 +82,98 @@ Pour déployer votre propre instance de Call Out 🫵, suivez ces étapes :
           }
         }
         ```
-        *Il est fortement recommandé d'implémenter l'authentification Firebase et des règles de sécurité granulaires pour la production.*
-*   Dans les **Paramètres du projet** > **Général**, enregistrez une nouvelle **application Web**.
-    *   Ne cochez PAS "Configurer également Firebase Hosting...".
-*   Copiez l'objet de configuration `firebaseConfig` fourni. Vous aurez besoin des valeurs `apiKey`, `authDomain`, `databaseURL`, et `projectId`.
+        *It is highly recommended to implement Firebase authentication and granular security rules for production.*
+*   In **Project settings** > **General**, register a new **Web app**.
+    *   Do NOT check "Also set up Firebase Hosting...".
+*   Copy the provided `firebaseConfig` object. You will need the `apiKey`, `authDomain`, `databaseURL`, and `projectId` values.
 
-**3. Configuration de Google Apps Script:**
+**3. Google Apps Script Configuration:**
 
-*   Créez un nouveau projet sur [script.google.com](https://script.google.com/).
-*   Copiez le contenu des fichiers du dossier `/GAS` de ce dépôt dans les fichiers correspondants de votre projet Apps Script. (Créez les fichiers HTML s'ils n'existent pas via `Fichier > Nouveau > Fichier HTML`).
-*   Configurez les **Propriétés du script** (Paramètres du projet ⚙️ > Propriétés du script (en bas de page)) avec vos clés Firebase :
+*   Create a new project on [script.google.com](https://script.google.com/).
+*   Copy the content of the files from the `/GAS` folder of this repository into the corresponding files in your Apps Script project. (Create HTML files if they don't exist via `File > New > HTML file`).
+*   Configure the **Script Properties** (Project Settings ⚙️ > Script properties (at the bottom of the page)) with your Firebase keys:
     *   `FIREBASE_API_KEY`
     *   `FIREBASE_AUTH_DOMAIN`
     *   `FIREBASE_DATABASE_URL`
     *   `FIREBASE_PROJECT_ID`
-*   Enregistrez les propriétés.
+*   Save the properties.
 
-**4. Déploiement de l'Application Web:**
+**4. Deploying the Web Application:**
 
-*   Dans l'éditeur Apps Script, cliquez sur **Déployer** > **Nouveau déploiement**.
-*   Type de déploiement : **Application Web**.
-*   Configurez :
-    *   **Exécuter en tant que:** `Moi`.
-    *   **Qui a accès:** `Tout le monde`. (pour que vos amis puissent se connecter)
-*   Cliquez sur **Déployer**.
-*   Autorisez les permissions requises par le script.
-*   Copiez l'**URL de l'application Web** fournie. C'est l'URL d'accès à votre jeu. (Partagez le avec vos amis !)
+*   In the Apps Script editor, click **Deploy** > **New deployment**.
+*   Deployment type: **Web app**.
+*   Configure:
+    *   **Execute as:** `Me`.
+    *   **Who has access:** `Anyone`. (so your friends can connect)
+*   Click **Deploy**.
+*   Authorize the permissions required by the script.
+*   Copy the provided **Web app URL**. This is the access URL for your game. (Share it with your friends!)
 
-**(Optionnel) Configuration du Déclencheur pour Nettoyage Automatique:**  
-La gestion des suppressions de lobby dans la base de donnée est pas fiable donc pour palier à ce problème et nettoyer la base de donnée j'utilise l'API REST de Firebase Realtime Database, cependant cette méthode est **déconseillé et opsolète** :
-*   Générer une `FIREBASE_DATABASE_ID` :
-    *   Dans votre projet firebase cliquer sur Paramètres du projet ⚙️ sur la gauche > Comptes de service > Secrets de la base de données > afficher le Secret.
-*   Configurez GAS :
-    *    **Propriétés du script** (Paramètres du projet ⚙️ > Propriétés du script (en bas de page)) avec `FIREBASE_DATABASE_ID`
-    *   Pour exécuter la fonction `cleanUpLobbies` périodiquement (ex: tout les lundis matin) :
-        *   Dans l'éditeur Apps Script, allez à la section **Déclencheurs** (icône ⏰).
-        *   Cliquez sur **Ajouter un déclencheur**.
-        *   Configurez pour exécuter `cleanUpLobbies` sur un événement `Temporel` (ex: `Minuteur horaire`).
+**(Optional) Configuring the Trigger for Automatic Cleanup:**
+Lobby deletion management in the database is not reliable. To address this issue and clean the database, I use the Firebase Realtime Database REST API. However, this method is **deprecated and obsolete**:
+*   Generate a `FIREBASE_DATABASE_SECRET`:
+    *   In your Firebase project, click Project Settings ⚙️ on the left > Service accounts > Database secrets > Show Secret.
+*   Configure GAS:
+    *    **Script Properties** (Project Settings ⚙️ > Script properties (at the bottom of the page)) with `FIREBASE_DATABASE_SECRET`
+    *   To run the `cleanUpLobbies` function periodically (e.g., every Monday morning):
+        *   In the Apps Script editor, go to the **Triggers** section (⏰ icon).
+        *   Click **Add Trigger**.
+        *   Configure to run `cleanUpLobbies` on a `Time-driven` event (e.g., `Hourly timer`).
 
-## 🔧 Personnalisation
+## 🔧 Customization
 
-**1. Ajouter ou Modifier des Questions:**
+**1. Adding or Modifying Questions:**
 
-*   Modifiez le fichier `Questions.html` (situé dans `/GAS` pour le déploiement) en ajoutant ou modifiant les chaînes de caractères dans les tableaux `gentleQuestions`, `mixQuestions`, ou `extremeQuestions`.
-*   Après toute modification, **redéployez** votre application Web Apps Script (Déployer > Gérer les déploiements > choisissez votre déploiement > Modifier ✏️ > Nouvelle version & Description (optionnel)> Déployer).
+*   Modify the `Questions.html` file (located in `/GAS` for deployment) by adding or changing the strings in the `gentleQuestions`, `mixQuestions`, or `extremeQuestions` arrays.
+*   After any modification, **redeploy** your Apps Script web application (Deploy > Manage deployments > choose your deployment > Edit ✏️ > New version & Description (optional) > Deploy).
 
-**2. Ajouter ou Modifier des Avatars:**
+**2. Adding or Modifying Avatars:**
 
-*   **Méthode 1: Utilisation d'URLs Publiques (Recommandé pour la simplicité)**
-    *   Ouvrez le fichier `AvatarData.html` (dans `/GAS`).
-    *   Modifiez ou ajoutez des objets au tableau JavaScript `AVATAR_LIST`. Chaque objet doit avoir la structure suivante : `{ name: "Nom de l'avatar", src: "URL_PUBLIQUE_DE_L_IMAGE.png" }`.
-    *   Assurez-vous que les URLs pointent directement vers des fichiers image (.png, .jpg, .gif, .svg) accessibles publiquement.
-    *   **Redéployez** votre application Apps Script après modification.
+*   **Method 1: Using Public URLs (Recommended for simplicity)**
+    *   Open the `AvatarData.html` file (in `/GAS`).
+    *   Modify or add objects to the JavaScript array `AVATAR_LIST`. Each object must have the following structure: `{ name: "Avatar Name", src: "PUBLIC_IMAGE_URL.png" }`.
+    *   Ensure that the URLs point directly to publicly accessible image files (.png, .jpg, .gif, .svg).
+    *   **Redeploy** your Apps Script application after modification.
 
-*   **Méthode 2: Génération d'Avatars Personnalisés avec IA et Python (Local)**
-    1.  **Préparation (localement):**
-        *   Clonez ce dépôt GitHub sur votre machine.
-        *   Naviguez vers le dossier `/Scripts`.
-        *   Installez les dépendances Python : `pip install -r requirements.txt` (cela installera `Pillow`).
-    2.  **Création d'Avatars avec IA :**
-        *   Obtenez une image de la personne pour laquelle vous souhaitez créer un avatar.
-        *   Utilisez ChatGPT pour générer une image, en donnant l'image de la personne et en écrivant un prompt tel que :
-            `"Generate a high-quality chibi-style sticker of this person with a transparent background."` (note: chibi-style créer des stickers mignon, libre à vous de choisir un autre style, graffiti art, comic, caricature in pixar style ...)
-        *   Téléchargez l'image générée (assurez-vous qu'elle soit au format `.png` et avec un fond transparent si possible).
-    3.  **Organisation des Fichiers:**
-        *   Placez toutes les images PNG que vous souhaitez utiliser comme avatars dans le dossier `/Avatars` de votre copie locale du dépôt.
-    4.  **Exécution du Script Python:**
-        *   Depuis le dossier racine de votre copie locale du dépôt, exécutez le script `generate_avatars.py` en spécifiant le dossier `/Avatars` :
+*   **Method 2: Generating Custom Avatars with AI and Python (Local)**
+    1.  **Preparation (locally):**
+        *   Clone this GitHub repository to your machine.
+        *   Navigate to the `/Scripts` folder.
+        *   Install Python dependencies: `pip install -r requirements.txt` (this will install `Pillow`).
+    2.  **Creating Avatars with AI:**
+        *   Obtain an image of the person for whom you want to create an avatar.
+        *   Use ChatGPT to generate an image, by providing the person's image and writing a prompt such as:
+            `"Generate a high-quality chibi-style sticker of this person with a transparent background."` (note: chibi-style creates cute stickers, feel free to choose another style, graffiti art, comic, caricature in Pixar style, etc.)
+        *   Download the generated image (ensure it is in `.png` format and preferably with a transparent background).
+    3.  **Organizing Files:**
+        *   Place all PNG images you want to use as avatars in the `/Avatars` folder of your local copy of the repository.
+    4.  **Running the Python Script:**
+        *   From the root folder of your local repository copy, run the `generate_avatars.py` script, specifying the `/Avatars` folder:
             ```bash
             python Scripts/generate_avatars.py
             ```
-        *   Le script traitera chaque image PNG dans le dossier `/Avatars`, la redimensionnera en 128x128, la convertira en une chaîne Base64, et générera un fichier nommé `avatars_output.txt` à la racine du dossier `/Avatars`. Ce fichier contiendra la structure JavaScript `AVATAR_LIST` prête à l'emploi.
-    5.  **Intégration dans GAS:**
-        *   Ouvrez le fichier `Avatars/avatars_output.txt` généré.
-        *   Copiez **l'intégralité de son contenu** (CTRL+A > CTRL+C).
-        *   Dans votre projet Google Apps Script, ouvrez le fichier `AvatarData.html`.
-        *   **Remplacez** le contenu existant du fichier `AvatarData.html` (CTRL+A > CTRL+V) par le contenu que vous venez de copier.
-    6.  **Redéploiement:**
-        *   **Redéployez** votre application Web Apps Script pour que les nouveaux avatars soient pris en compte.
+        *   The script will process each PNG image in the `/Avatars` folder, resize it to 128x128, convert it to a Base64 string, and generate a file named `avatars_output.txt` in the root of the `/Avatars` folder. This file will contain the ready-to-use JavaScript `AVATAR_LIST` structure.
+    5.  **Integration into GAS:**
+        *   Open the generated `Avatars/avatars_output.txt` file.
+        *   Copy **its entire content** (CTRL+A > CTRL+C).
+        *   In your Google Apps Script project, open the `AvatarData.html` file.
+        *   **Replace** the existing content of the `AvatarData.html` file (CTRL+A > CTRL+V) with the content you just copied.
+    6.  **Redeployment:**
+        *   **Redeploy** your Apps Script web application for the new avatars to take effect.
 
-## 🎮 Comment Jouer
+## 🎮 How to Play
 
-1.  Accédez à l'URL de l'application Web que vous avez déployée.
-2.  Entrez un pseudo et sélectionnez un avatar.
-3.  **Pour créer une partie:** Cliquez sur "Créer une Partie" et partagez le code de partie généré.
-4.  **Pour rejoindre une partie:** Entrez votre pseudo, choisissez un avatar, saisissez le code de partie fourni, et cliquez sur "Rejoindre une Partie".
-5.  Dans le **lobby**, attendez les autres joueurs. Le leader de la partie (créateur) peut sélectionner le set de questions et démarrer le jeu.
-6.  Pendant la phase de **vote**, sélectionnez l'avatar du joueur qui, selon vous, correspond le mieux à la question affichée.
-7.  Consultez les **résultats** pour voir qui a reçu le plus de votes.
-8.  Le **lancer de pièce** déterminera si les noms des votants pour un joueur spécifique sont révélés.
-9.  Cliquez sur "Prêt pour la prochaine manche" pour continuer. Le jeu progresse lorsque tous les joueurs connectés sont prêts.
-10. Utilisez le bouton "Quitter" pour vous déconnecter de la partie ou du lobby.
+1.  Access the Web app URL that you deployed.
+2.  Enter a nickname and select an avatar.
+3.  **To create a game:** Click "Create Game" and share the generated game code.
+4.  **To join a game:** Enter your nickname, choose an avatar, enter the provided game code, and click "Join Game".
+5.  In the **lobby**, wait for other players. The game leader (creator) can select the question set and start the game.
+6.  During the **voting** phase, select the avatar of the player who you think best matches the displayed question.
+7.  Check the **results** to see who received the most votes.
+8.  The **coin toss** will determine if the names of voters for a specific player are revealed.
+9.  Click "Ready for the next round" to continue. The game progresses when all connected players are ready.
+10. Use the "Leave" button to disconnect from the game or lobby.
 
-## 📄 Licence
+## 📄 License
 
-Ce projet est distribué sous la licence MIT. Pour plus de détails, veuillez consulter le fichier `LICENSE` dans ce dépôt.
+This project is distributed under the MIT License. For more details, please see the `LICENSE` file in this repository.

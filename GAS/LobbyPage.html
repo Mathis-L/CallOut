@@ -416,7 +416,7 @@
                  leaveBtn.disabled = false;
              } catch (error) {
                  console.error("Échec de la récupération de l'URL de base (Lobby):", error);
-                 showAlertLobby("Erreur critique: Impossible de contacter le serveur pour la navigation. Certaines actions peuvent échouer.", 'error');
+                 showAlertLobby("Critical error! 🚨 Can’t reach the server right now—some actions might not work!", 'error');
                  leaveBtn.disabled = true; // because leave redirect
              }
         }
@@ -452,7 +452,7 @@
                 return true;
             } catch (error) {
                 console.error("Erreur init Firebase (Lobby):", error);
-                showLobbyClosed(`Erreur critique d'initialisation Firebase: ${error.message}`);
+                showLobbyClosed(`Critical Firebase error! 🚨 Something went wrong: ${error.message}`);
                 return false;
             }
         }
@@ -467,7 +467,7 @@
             loaderArea.style.display = 'none';
             playerListElement.innerHTML = '';
             if (!playersData || Object.keys(playersData).length === 0) {
-                playerListElement.innerHTML = '<li class="status-message">Personne dans le lobby...</li>';
+                playerListElement.innerHTML = '<li class="status-message">Empty lobby...</li>';
                 return;
             }
             const playersArray = Object.entries(playersData).map(([id, data]) => ({ id, ...data }));
@@ -551,7 +551,7 @@
          */
          function navigateToPage(url) {
             if (!url) {
-                showAlertLobby("Impossible de naviguer: URL de destination manquante.", "error");
+                showAlertLobby("Uh-oh! 🌐 Missing the destination URL", "error");
                 leaveBtn.disabled = false;
                 return;
             }
@@ -582,7 +582,7 @@
         async function leaveLobby() {
             console.log("Clic sur 'Quitter le lobby'.");
             leaveBtn.disabled = true;
-            leaveBtn.textContent = "Déconnexion...";
+            leaveBtn.textContent = "Disconnecting... ";
 
              // 1. Cancel onDisconnect before manual deletion
              cancelOnDisconnectHandlers();
@@ -596,21 +596,21 @@
                 }
 
                  // iOS workaround don't redirect yet show a link to the homepage
-                 const homeUrl = getHomeUrl("Vous avez quitté le lobby.");
+                 const homeUrl = getHomeUrl("You’ve left the lobby! ");
                  if (homeUrl) {
-                     showLobbyClosed("Vous avez quitté le lobby.", homeUrl); // Utilise le prompt existant
+                     showLobbyClosed("You’ve left the lobby!", homeUrl); // Utilise le prompt existant
                  } else {
-                     showAlertLobby("Vous avez quitté, mais impossible de générer le lien retour.", "message");
+                     showAlertLobby("You’ve left, but we can’t generate the return link! 🔄 Try again soon!", "message");
                      // Laisse le bouton désactivé dans cet état étrange
                  }
 
             } catch(error) {
                  console.error("Erreur lors de la suppression manuelle du joueur:", error);
-                  const homeUrl = getHomeUrl(null, "Erreur en quittant le lobby.");
+                  const homeUrl = getHomeUrl(null, "Error leaving the lobby");
                   if (homeUrl) {
-                     showLobbyClosed(`Erreur en quittant: ${error.message}.`, homeUrl);
+                     showLobbyClosed(`Error while leaving: ${error.message}`, homeUrl);
                   } else {
-                      showAlertLobby("Erreur en quittant, et impossible de générer le lien retour.", "error");
+                      showAlertLobby("You’ve left, but we can’t generate the return link! 🔄 Try again soon!", "error");
                   }
             }
         }
@@ -750,7 +750,7 @@
         function attachFirebaseListeners() {
             if (!gameRef || !playersRef) {
                 console.error("Références Firebase invalides, listeners non attachés.");
-                 showLobbyClosed("Erreur interne: Impossible de surveiller le lobby.");
+                 showLobbyClosed("Internal error! 🚨 Can’t monitor the lobby right now!");
                 return;
             }
             console.log("Attachement des listeners Firebase (Lobby)...");
@@ -761,7 +761,7 @@
                 if (!snapshot.exists()) {
                     console.log("Le lobby n'existe plus (détecté par gameRef).");
                     // iOS workaround
-                    showLobbyClosed(`Le lobby "${gameId}" a été fermé ou n'existe plus.`);
+                    showLobbyClosed(`The lobby "${gameId}" is closed or no longer exists! 🚪`);
                     return;
                 }
 
@@ -783,7 +783,7 @@
                      if (gameUrl) {
                         showGameStartingPrompt(gameUrl); // Passer l'URL à la fonction
                      } else {
-                         showAlertLobby("La partie commence, mais erreur interne pour créer le lien de jeu.", "error");
+                         showAlertLobby("The game’s starting, but whoops! 🚨 Internal error creating the game link!", "error");
                      }
                     return;
                 }
@@ -808,7 +808,7 @@
             }, (error) => {
                 console.error("Erreur listener Firebase gameRef:", error);
                 // iOS workaround
-                showLobbyClosed(`Erreur critique de connexion au lobby: ${error.message}`);
+                showLobbyClosed(`Critical error connecting to the lobby! 🚨 Error: ${error.message}`);
             });
 
             // Listener pour la liste des joueurs
@@ -820,7 +820,7 @@
                  handleOnDisconnectLogic(playersData);
             }, (error) => {
                  console.error("Erreur listener Firebase playersRef:", error);
-                 showAlertLobby(`Erreur chargement liste joueurs: ${error.message}`, 'warning');
+                 showAlertLobby(`Couldn't load the player list! 🚨 ${error.message}`, 'warning');
             });
         }
 
@@ -858,7 +858,7 @@
 
             // Générer l'URL de retour si non fournie (ex: pour erreurs internes)
             if (!homeUrl) {
-                 homeUrl = getHomeUrl(null, "Retour suite à une erreur/fermeture du lobby.");
+                 homeUrl = getHomeUrl(null, "Returning after an error/closure of the lobby!");
             }
 
             // Configurer le lien de retour AVANT d'afficher
@@ -869,7 +869,7 @@
                 // Si même l'URL de base n'est pas dispo, cacher le lien
                 backHomeLink.style.display = 'none';
                  // Ajouter un message indiquant l'impossibilité de revenir
-                lobbyClosedText.textContent += " Impossible de générer le lien de retour.";
+                lobbyClosedText.textContent += " Can't generate the return link! ";
             }
 
             // Afficher le prompt et cacher les autres contenus
@@ -917,7 +917,7 @@
                  }
                  // leaveBtn is already activated in fetchWebAppUrl() if success
             } else {
-                 showLobbyClosed("Erreur critique: Impossible de charger la configuration initiale de l'application.");
+                 showLobbyClosed("Critical error! 🚨 Couldn’t load the app’s initial setup!");
                  loaderArea.style.display = 'none'; // Hide loader
             }
 
@@ -927,18 +927,18 @@
                 if (event.target.name === 'questionSet' && isLeader) {
                     const selectedSet = event.target.value;
                     console.log(`Leader a choisi le set: ${selectedSet}`);
-                    questionSetStatus.textContent = 'Sauvegarde...';
+                    questionSetStatus.textContent = 'Saving...';
                     questionSetRadios.forEach(r => r.disabled = true); // Désactiver pendant la sauvegarde
 
                     gameRef.update({ selectedQuestionSet: selectedSet })
                         .then(() => {
                             console.log("Set de questions mis à jour dans Firebase.");
-                            questionSetStatus.textContent = `Set '${selectedSet}' sélectionné.`;
+                            questionSetStatus.textContent = `You’ve selected '${selectedSet}'! ✅`;
                             setTimeout(() => { questionSetStatus.textContent = ''; }, 2000); // Effacer message après 2s
                         })
                         .catch(error => {
                             console.error("Erreur sauvegarde set questions:", error);
-                            questionSetStatus.textContent = 'Erreur sauvegarde.';
+                            questionSetStatus.textContent = 'Save error! Try again!';
                             // Remettre la sélection précédente ? Ou laisser tel quel et l'utilisateur réessaie.
                         })
                         .finally(() => {
@@ -955,14 +955,14 @@
                 if (!isLeader || !gameRef) return;
                 console.log("Clic leader sur 'Démarrer'.");
                 startGameBtn.disabled = true;
-                startGameBtn.textContent = "Démarrage...";
+                startGameBtn.textContent = "Starting... ";
                 gameRef.update({ status: 'playing' })
                     .then(() => console.log("Statut mis à jour à 'playing'."))
                     .catch(error => {
                         console.error("Erreur lors du démarrage du jeu:", error);
-                        showAlertLobby(`Impossible de démarrer la partie: ${error.message}`, "error");
+                        showAlertLobby(`🚨 Couldn’t start the game: ${error.message}`, "error");
                         startGameBtn.disabled = false; // Réactiver si échec
-                        startGameBtn.textContent = "Démarrer la Partie";
+                        startGameBtn.textContent = "Start The Game!!";
                     });
             });
 
