@@ -158,7 +158,7 @@
   
   
   /* --- Game Content & Phases --- */
-  #game-content { min-height: 350px; display: flex; flex-direction: column; align-items: center; position: relative;}
+  #game-content { display: flex; flex-direction: column; align-items: center; position: relative;}
   .game-phase { /* Base for all phases */
     display: block; position: absolute; width: 100%;
     top: 0; left: 0; opacity: 0; visibility: hidden;
@@ -181,6 +181,45 @@
   #next-round-btn { background-color: var(--clr-success); width: 100%; max-width: 300px; }
   #next-round-btn.ready { background-color: var(--clr-primary-green); color: var(--clr-accent-yellow); font-weight: bold; }
   
+  .button-like-link {
+  /* On réinitialise les styles par défaut des liens */
+  text-decoration: none; 
+  
+  /* On applique les mêmes styles que les boutons */
+  width: 100%;
+  padding: 12px 15px;
+  margin-top: 10px;
+  border: var(--border-strong);
+  border-radius: var(--radius-button);
+  color: var(--clr-text-light);
+  font-family: var(--font-main);
+  font-weight: 700;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: all 0.15s ease-out;
+  box-shadow: var(--shadow-strong);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  
+  /* On s'assure que le texte est centré, comme dans un bouton */
+  display: flex; 
+  justify-content: center; 
+  align-items: center;
+  text-align: center;
+  box-sizing: border-box; /* Important pour que padding et border soient inclus dans la largeur */
+}
+
+.button-like-link:hover {
+  /* On réplique l'effet de survol des boutons */
+  transform: translateY(-3px) translateX(-3px);
+  box-shadow: 8px 8px 0px var(--clr-primary-purple);
+}
+
+.button-like-link:active {
+  /* On réplique l'effet de clic des boutons */
+  transform: translateY(0px) translateX(0px);
+  box-shadow: var(--shadow-strong);
+}
   
   /* --- Voting Phase --- */
   #voting-phase h2 { color: var(--clr-primary-orange); text-transform: uppercase; font-size: 1.6rem;}
@@ -401,6 +440,23 @@
     50% { transform: rotateX(1845deg) rotateZ(20deg); top: -60px; } /* Higher and more spin */
     100% { top: 0; /* Final position set by JS after animation */ }
   }
+
+  /* Confession part */
+#player-confession-target-options { 
+  display: grid;
+  /* La magie est ici : crée des colonnes qui font au minimum 100px, 
+     et se partagent l'espace équitablement (1fr). */
+  grid-template-columns: repeat(auto-fit, minmax(100px, 1fr)); 
+  gap: 15px; 
+  width: 100%; 
+  margin-bottom: 15px; 
+}
+
+  #next-round-btn-confession{
+    background-color: var(--clr-success);
+    width: 100%;
+    max-width: 300px;
+  }
   
   /* Responsive adjustments for game page */
   @media (max-width: 480px) {
@@ -418,4 +474,231 @@
     .coin-animation-spot-popup .coin { width: 60px; height: 60px; }
     .coin-animation-spot-popup .coin .head, .coin-animation-spot-popup .coin .tail { font-size: 1.8rem; }
   }
+
+  /* ================================
+   CONFESSION MODE — THEME OVERRIDES
+   ================================ */
+/* Palette dédiée à la confession (neon / drama) */
+:root {
+  --conf-bg-1: #0B0A10;            /* deep ink */
+  --conf-bg-2: #1C1133;            /* purple black */
+  --conf-text: #F8F6FF;
+  --conf-primary: #9B5CF6;         /* neon purple */
+  --conf-secondary: #FF5C8A;       /* hot pink */
+  --conf-accent: #54F3C4;          /* aqua */
+  --conf-shadow: rgba(0,0,0,0.55);
+}
+
+/* When entering a confession phase, we toggle body.confession-mode */
+body.confession-mode {
+  background: radial-gradient(1200px 900px at 50% -10%, color-mix(in srgb, var(--conf-primary) 18%, transparent), transparent 60%),
+              linear-gradient(160deg, var(--conf-bg-1), var(--conf-bg-2));
+  animation: conf-bg-pan 12s ease-in-out infinite alternate;
+  user-select: none;
+}
+@keyframes conf-bg-pan { to { background-position: 60% 0, 100% 100%; } }
+
+/* Vignette + ambient glow overlay (injected by JS) */
+#confession-ambient {
+  position: fixed; inset: 0; pointer-events: none; z-index: 50;
+  background:
+    radial-gradient(60% 45% at 50% 0%, color-mix(in srgb, var(--conf-primary) 18%, transparent), transparent 70%),
+    radial-gradient(40% 30% at 50% 100%, color-mix(in srgb, var(--conf-secondary) 16%, transparent), transparent 80%),
+    radial-gradient(120% 120% at 50% 50%, transparent, rgba(0,0,0,0.35));
+  opacity: 0; transition: opacity .35s ease;
+}
+body.confession-mode #confession-ambient { opacity: 1; }
+
+/* Cards & borders slightly morph in confession */
+body.confession-mode .card {
+  border-color: var(--conf-primary);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--conf-primary) 40%, transparent), 0 16px 40px var(--conf-shadow);
+}
+
+/* Headings get neon accent */
+body.confession-mode h2 {
+  color: var(--conf-primary);
+  text-shadow: 0 0 14px color-mix(in srgb, var(--conf-primary) 60%, transparent);
+}
+
+/* Buttons harmonized, with variant accents for judgment */
+body.confession-mode #judgment-convinced-btn {
+  background-color: var(--conf-accent);
+  color: #0b0a10;
+}
+body.confession-mode #judgment-not-convinced-btn {
+  background-color: var(--conf-secondary);
+}
+body.confession-mode #next-round-btn-confession {
+  background-color: var(--conf-primary);
+  box-shadow: 6px 6px 0 color-mix(in srgb, var(--conf-primary) 60%, transparent);
+}
+
+/* Confession question gets a spotlight + type-in vibe */
+.confession-question-hero {
+  position: relative; isolation: isolate;
+  background: color-mix(in srgb, var(--conf-primary) 12%, var(--clr-card-bg));
+  border: 3px solid var(--conf-primary);
+  border-radius: 16px; padding: 14px 16px;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--conf-primary) 30%, transparent), 0 8px 22px var(--conf-shadow);
+
+}
+.confession-question-hero::before {
+  content: ""; position: absolute; inset: -2px; z-index: -1; border-radius: 18px;
+  background: radial-gradient(500px 160px at 50% 0%, color-mix(in srgb, var(--conf-accent) 25%, transparent), transparent 70%);
+  filter: blur(8px);
+}
+
+/* Subtle type-in reveal */
+.reveal-in {
+  opacity: 0; transform: translateY(6px) scale(0.99);
+  animation: reveal-in 1s ease forwards;
+}
+@keyframes reveal-in { to { opacity: 1; transform: none; } }
+
+/* Chooser / target highlights */
+/* Chooser / target highlights — clean glow, pas de grosse bordure */
+#player-list li { position: relative; }
+
+/* CHOOSER: accent aqua + soulignement discret */
+#player-list li.is-chooser .player-avatar {
+  border-color: var(--conf-accent);
+  box-shadow:
+    0 0 0 2px var(--clr-card-bg),
+    0 0 0 5px color-mix(in srgb, var(--conf-accent) 45%, transparent),
+    0 8px 18px rgba(0,0,0,.15);
+  transform: translateY(-1px);
+}
+#player-list li.is-chooser .player-name-list {
+  color: var(--conf-accent);
+  text-shadow: 0 0 6px color-mix(in srgb, var(--conf-accent) 35%, transparent);
+}
+#player-list li.is-chooser::before {
+  content: "";
+  position: absolute;
+  left: 8px; right: 8px; bottom: -6px;
+  height: 3px; border-radius: 3px;
+  background: var(--conf-accent);
+  opacity: .9;
+}
+
+/* TARGET: accent hot pink + soulignement discret */
+#player-list li.is-target .player-avatar {
+  border-color: var(--conf-secondary);
+  box-shadow:
+    0 0 0 2px var(--clr-card-bg),
+    0 0 0 5px color-mix(in srgb, var(--conf-secondary) 45%, transparent),
+    0 8px 18px rgba(0,0,0,.15);
+  transform: translateY(-1px);
+}
+#player-list li.is-target .player-name-list {
+  color: var(--conf-secondary);
+  text-shadow: 0 0 6px color-mix(in srgb, var(--conf-secondary) 35%, transparent);
+}
+#player-list li.is-target::before {
+  content: "";
+  position: absolute;
+  left: 8px; right: 8px; bottom: -6px;
+  height: 3px; border-radius: 3px;
+  background: var(--conf-secondary);
+  opacity: .9;
+}
+/* Selection grid gets bigger avatars + hover lift */
+#player-confession-target-options .player-vote-btn {
+  gap: 10px; padding: 14px; border-color: var(--conf-primary);
+  box-shadow: 6px 6px 0 color-mix(in srgb, var(--conf-primary) 50%, transparent);
+}
+#player-confession-target-options .player-vote-btn .player-avatar {
+  border-color: var(--conf-primary);
+}
+
+#confession-verdict-display{
+  margin-bottom : 20px; 
+  background-color: var(--clr-input-bg);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+/* Verdict stamp animation */
+.verdict-stamp {
+  display: inline-block; padding: 6px 12px; border: 3px solid currentColor; font-weight: 900;
+  letter-spacing: 1px; text-transform: uppercase; transform: rotate(-6deg) scale(0.9);
+  animation: stamp-pop .35s cubic-bezier(.2,.9,.25,1.2) forwards;
+  margin: 20px;
+}
+.verdict-stamp.approved { color: var(--conf-accent); }
+.verdict-stamp.rejected { color: var(--conf-secondary); }
+@keyframes stamp-pop { 60% { transform: rotate(-6deg) scale(1.08); } 100% { transform: rotate(-2deg) scale(1); } }
+
+/* Jury meter — sobre, sans dégradé flashy */
+.jury-meter {
+  width: 100%;
+  height: 10px;
+  border-radius: 999px;
+   margin: 15px 0; 
+  overflow: hidden;
+  border: 2px solid var(--conf-primary);
+  background: color-mix(in srgb, var(--conf-primary) 10%, transparent);
+}
+.jury-fill {
+  height: 100%;
+  width: 0%;
+  background-color: var(--conf-primary);
+  border-radius: 999px;
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,0.1);
+  transition: width .45s cubic-bezier(.25,.9,.25,1);
+}
+
+/* Respect user motion preference */
+@media (prefers-reduced-motion: reduce) {
+  body.confession-mode { animation: none; }
+  .reveal-in, .verdict-stamp { animation: none; }
+}
+
+/* Le sous-titre : plus grand que le texte normal, mais moins que le titre H2 */
+.confession-subtitle {
+  font-size: 1.1em;
+  font-weight: 600;
+  margin-bottom: 20px;
+  text-align: center;
+  color: var(--clr-text-dark);
+  line-height: 1.4;
+}
+.confession-subtitle strong {
+  color: var(--clr-primary-orange);
+}
+
+/* Le cadre pour la question, comme avant */
+/* .confession-question-box {
+  width: 100%;
+  padding: 15px;
+  margin-bottom: 20px;
+  background-color: var(--clr-input-bg);
+  border-radius: var(--radius-input);
+  border: var(--border-strong);
+  border-color: var(--clr-primary-green);
+  box-shadow: var(--shadow-strong);
+} */
+
+/* Le texte de la question lui-même, en italique */
+.confession-question-box p {
+  font-size: 1.2em;
+  font-weight: 600;
+  text-align: center;
+  font-style: italic;
+  margin: 0;
+  margin-bottom: 30px;
+}
+
+/* L'instruction : petite, discrète, mais claire */
+.confession-instruction {
+  font-size: 0.9em;
+  font-style: italic;
+  font-weight: 500;
+  color: var(--clr-primary-purple);
+  text-align: center;
+  margin-top: 15px;
+}
   </style>

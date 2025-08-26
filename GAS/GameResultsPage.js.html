@@ -1,0 +1,1255 @@
+<script>
+/**
+ * @file ResultsPage.js
+ * Gère la récupération, le traitement et l'affichage des résultats finaux d'une partie.
+ * Utilise Chart.js pour la visualisation des données.
+ */
+
+// --- DÉFINITION DES BADGES ---
+const BADGE_MANIFEST = {
+    voteMagnet:    { 
+        icon: '🧲', title: 'Vote Magnet', 
+        desc: 'The most targeted player overall.',
+        formatDesc: (p) => `The most targeted player overall, with ${p.totalVotesReceived} votes received.`
+    },
+    ninja:         { 
+        icon: '🥷', title: 'Ninja', 
+        desc: 'The most evasive player (fewest votes received).',
+        formatDesc: (p) => `The most evasive player, with only ${p.totalVotesReceived} votes received.`
+    },
+    leader:        { 
+        icon: '👑', title: 'The Leader', 
+        desc: 'Most often voted with the majority in a round.',
+        formatDesc: (p) => `Most often voted with the majority (${p.leaderVotes} times).`
+    },
+    maverick:      { 
+        icon: '🐺', title: 'The Maverick', 
+        desc: 'Most often voted for a player who received no other votes.',
+        formatDesc: (p) => `Most often voted for a solo target (${p.maverickVotes} times).`
+    },
+    vendetta:      { 
+        icon: '🎯', title: 'The Vendetta', 
+        desc: 'Voted for the same person more than anyone else.',
+        formatDesc: (p) => {
+            const maxVotes = Math.max(0, ...Object.values(p.votesCast));
+            return `Voted for the same person ${maxVotes} times, more than anyone else's vendetta.`;
+        }
+    },
+    serialTargeter:{ 
+        icon: '🔫', title: 'Serial Targeter', 
+        desc: 'Had the longest streak of voting for the same person.',
+        formatDesc: (p) => `Had the longest streak of voting for the same person (${p.maxVoteStreak} rounds in a row).`
+    },
+    maskedAvenger: { 
+        icon: '🎭', title: 'Masked Avenger', 
+        desc: 'Most often voted for someone who had just targeted them.',
+        formatDesc: (p) => `Avenged themselves by voting for their previous attacker ${p.avengerKills} times.`
+    },
+    inquisitor:    { 
+        icon: '🕵️', title: 'Grand Inquisitor', 
+        desc: 'Was chosen to judge a confession most often.',
+        formatDesc: (p) => `Was chosen to judge a confession ${p.timesAsInquisitor} times.`
+    },
+    untouchable:   { 
+        icon: '🛡️', title: 'The Untouchable', 
+        desc: 'Became immune from confessions most often.',
+        formatDesc: (p) => `Became immune from confessions ${p.timesUntouchable} times.`
+    },
+    diplomat:      { 
+        icon: '🕊️', title: 'The Diplomat', 
+        desc: 'Had the most rounds where they received zero votes.',
+        formatDesc: (p) => `Had the most rounds with zero votes received (${p.diplomatRounds} rounds).`
+    },
+    godOfLuck:     { 
+        icon: '🍀', title: 'God of Luck', 
+        desc: 'Had the best coin toss success rate.',
+        formatDesc: (p) => {
+            const rate = p.totalTosses > 0 ? Math.round((p.successfulTosses / p.totalTosses) * 100) : 0;
+            return `Had the best coin toss success rate (${rate}% success - ${p.successfulTosses}/${p.totalTosses}).`;
+        }
+    },
+    inAFog:        { 
+        icon: '😵‍💫', title: 'In a Fog', 
+        desc: 'Had the worst coin toss success rate.',
+        formatDesc: (p) => {
+            const rate = p.totalTosses > 0 ? Math.round((p.successfulTosses / p.totalTosses) * 100) : 0;
+            return `Had the worst coin toss success rate (${rate}% success - ${p.successfulTosses}/${p.totalTosses}).`;
+        }
+    },
+    notConvincing: { 
+        icon: '🤥', title: 'Not Convincing', 
+        desc: 'Failed the most confessions.',
+        formatDesc: (p) => `Failed the most confessions (${p.confessionFails} fails).`
+    },
+};
+
+// =======================================================================
+// NOUVEAU : Préparation de la map de données d'images des badges
+// =======================================================================
+// Transforme BADGE_LIST (chargé depuis BadgeData.html) en un objet pour un accès instantané.
+const badgeImageData = (typeof BADGE_LIST !== 'undefined' && Array.isArray(BADGE_LIST))
+  ? BADGE_LIST.reduce((acc, badge) => {
+      acc[badge.id] = badge.src;
+      return acc;
+    }, {})
+  : {};
+
+// NOUVEAU: Constantes de style pour les graphiques
+const THEME_COLORS = {
+    orange: 'rgba(249, 122, 61, 1)',
+    green: 'rgba(42, 87, 87, 1)',
+    teal: 'rgba(93, 192, 166, 1)',
+    purple: 'rgba(74, 47, 72, 1)',
+    yellow: 'rgba(249, 212, 35, 1)',
+    lightBg: 'rgba(253, 246, 233, 1)',
+    textDark: '#4A2F48',
+    textLight: '#FFFFFF',
+    gridColor: 'rgba(74, 47, 72, 0.1)'
+};
+
+const CHART_PALETTE = [
+    THEME_COLORS.orange,  // chaud - Orange vif
+    '#6495ED',            // froid - Bleu cornflower
+    THEME_COLORS.green,   // froid - Vert foncé
+    THEME_COLORS.yellow,  // chaud - Jaune saturé
+    THEME_COLORS.teal,    // froid - Vert d'eau
+    '#FF4500',            // chaud - Orange rouge
+    THEME_COLORS.purple,  // froid - Violet foncé
+    '#C3E63F',            // chaud - Lime clair
+    '#40E0D0',            // froid - Turquoise
+    '#E6B800',            // chaud - Doré profond
+    '#8A2BE2',            // froid - Bleu violet
+    '#DC143C',            // chaud - Rouge cramoisi
+    '#FF69B4',            // chaud - Rose vif
+    '#00FA9A',            // froid - Vert menthe
+    '#DA70D6',            // froid - Orchid
+    '#7FFF00'             // chaud - Vert citron
+];
+
+const CHART_DEFAULTS = {
+    font: {
+        family: "'Poppins', sans-serif",
+        color: THEME_COLORS.textDark
+    },
+    tooltip: {
+        enabled: true,
+        backgroundColor: THEME_COLORS.purple,
+        titleColor: THEME_COLORS.textLight,
+        bodyColor: THEME_COLORS.textLight,
+        titleFont: { family: "'Poppins', sans-serif", weight: 'bold' },
+        bodyFont: { family: "'Poppins', sans-serif" },
+        padding: 10,
+        cornerRadius: 8,
+        borderColor: THEME_COLORS.teal,
+        borderWidth: 1
+    }
+};
+
+// =========================================================================
+// NOUVEAU : Configuration centrale pour la génération dynamique des sections
+// =========================================================================
+const SECTIONS_CONFIG = [
+    {
+        id: 'summary-card',
+        content: `<div class="summary-grid">
+                      <div class="summary-item"><span class="summary-value" id="total-rounds">--</span><span class="summary-label">Rounds Played</span></div>
+                      <div class="summary-item"><span class="summary-value" id="game-duration">--:--</span><span class="summary-label">Game Duration</span></div>
+                  </div>`,
+        renderFn: (data) => renderSummary(data.gameSummary)
+    },
+    {
+        id: 'badges-card',
+        title: 'Player Awards & Titles',
+        subtitle: 'The official post-game honors. Hover over an icon to learn more.',
+        content: `<div id="player-badges-container" class="player-badges-grid"></div>`,
+        renderFn: (data) => renderPlayerBadges(data.playerAwards, data.playerStats)
+    },
+    {
+        id: 'evolution-chart-card',
+        title: 'Score Evolution Over Rounds',
+        subtitle: "See who became a target and when. Each line represents a player's cumulative votes received.",
+        content: `<div class="chart-container"><canvas id="scoreEvolutionChart"></canvas></div>`,
+        renderFn: (data) => renderScoreEvolutionChart(data.playerStats, data.gameSummary.totalRounds)
+    },
+    {
+        id: 'ranking-card',
+        title: 'Final Ranking: The Most Targeted',
+        subtitle: 'Who was the main character of this game?',
+        content: `<div class="chart-container"><canvas id="rankingChart"></canvas></div>`,
+        renderFn: (data) => renderRankingChart(data.playerStats)
+    },
+    {
+        id: 'heatmap-card',
+        title: 'Vote Heatmap: Who Targeted Whom?',
+        subtitle: 'The darker the cell, the more votes were cast. Hover for details.',
+        content: `<div class="heatmap-wrapper"><div id="heatmap-container"></div></div>`,
+        renderFn: (data) => renderHeatmap(data.playerStats, Object.keys(data.players))
+    },
+    {
+        id: 'vote-composition-card',
+        title: 'Voter Breakdown: Who Targeted Whom?',
+        subtitle: 'Each bar is a voter. Each colored segment is a player they voted for.',
+        content: `<div id="stacked-chart-wrapper"><div class="chart-container" style="height: 400px;"><canvas id="stackedVoteChart"></canvas></div><div id="stacked-chart-legend" class="custom-legend-container"></div></div>`,
+        renderFn: (data) => renderStackedVoteChart(data.playerStats)
+    },
+    {
+        id: 'network-graph-card',
+        title: 'The Target Network',
+        subtitle: 'An arrow shows who voted for whom. Thicker arrows mean more votes. Drag players around!',
+        content: `<div id="network-graph-container"></div>`,
+        renderFn: (data) => renderNetworkGraph(data.playerStats)
+    },
+    {
+        id: 'personal-radars-card',
+        title: 'Personal Player Breakdown',
+        subtitle: "A radar chart showing each player's strategic profile. Values are percentages (0-100).",
+        content: `<div id="personal-radars-container" class="personal-radars-grid"></div>`,
+        renderFn: (data) => renderPersonalRadars(data.playerStats, data.gameFeatures)
+    }
+];
+
+
+
+document.addEventListener('DOMContentLoaded', () => {
+    if (!gameId) {
+        showError("No Game ID provided in the URL.");
+        return;
+    }
+    if (typeof firebase === 'undefined' || typeof Chart === 'undefined') {
+        showError("A required library (Firebase or Chart.js) failed to load.");
+        return;
+    }
+
+    document.getElementById('game-id-display').textContent = `#${gameId}`;
+    initializeFirebaseAndFetchData();
+    setupHomeLinks();
+});
+
+function showError(message) {
+    document.getElementById('loading-state').style.display = 'none';
+    document.getElementById('results-content').style.display = 'none';
+    const errorState = document.getElementById('error-state');
+    const errorText = document.getElementById('error-text');
+    errorText.textContent = message;
+    errorState.style.display = 'block';
+    console.error(message);
+}
+
+function setupHomeLinks() {
+    const getWebAppUrl = () => new Promise((resolve) => {
+        if (typeof google !== 'undefined' && google.script && google.script.run) {
+            google.script.run.withSuccessHandler(url => resolve(url)).getScriptUrl();
+        } else {
+            resolve(window.location.origin + window.location.pathname);
+        }
+    });
+
+    getWebAppUrl().then(baseUrl => {
+        const homeUrl = `${baseUrl}?page=home`;
+        document.getElementById('home-link').href = homeUrl;
+        document.getElementById('error-home-link').href = homeUrl;
+    });
+}
+
+function initializeFirebaseAndFetchData() {
+    try {
+        if (!firebase.apps.length) {
+            firebase.initializeApp(firebaseConfig);
+        }
+        
+        firebase.auth().onAuthStateChanged(user => {
+            if (user) {
+                const gameRef = firebase.database().ref(`lobbies/${gameId}`);
+                gameRef.once('value', snapshot => {
+                    if (!snapshot.exists()) {
+                        showError(`No data found for Game ID #${gameId}.`);
+                        return;
+                    }
+                    processAndRenderData(snapshot.val());
+                }, error => {
+                    showError(`Permission Denied. You may not have been a player in game #${gameId}.`);
+                });
+            } else {
+                showError("You must be logged in to view game results.");
+            }
+        });
+    } catch (error) {
+        showError(`Initialization error: ${error.message}`);
+    }
+}
+
+/**
+ * Traite les données brutes de Firebase pour calculer toutes les statistiques nécessaires.
+ */
+function processGameData(gameData) {
+    if (!gameData || !gameData.history || !gameData.history.summary || !gameData.history.summary.initialPlayers || !gameData.history.rounds) {
+        throw new Error("Game data is incomplete.");
+    }
+
+    const { history, endTime } = gameData;
+    const { summary, rounds: rawRounds } = history;
+    const { initialPlayers, startTime } = summary;
+    const players = initialPlayers;
+    const rounds = Object.values(rawRounds).filter(Boolean);
+    const totalRounds = rounds.length;
+
+    const playerStats = {};
+    
+    // NOUVEAU: Initialisation des trackers de streak pour chaque joueur
+    const playerStreakTrackers = {}; 
+
+    Object.keys(players).forEach(playerId => {
+        playerStats[playerId] = {
+            id: playerId, pseudo: players[playerId].pseudo, avatarSrc: players[playerId].avatarSrc,
+            totalVotesReceived: 0, votesCast: {}, confessionFails: 0, successfulTosses: 0, totalTosses: 0,
+            leaderVotes: 0, maverickVotes: 0, timesAsInquisitor: 0, timesUntouchable: 0,
+            avengerKills: 0, diplomatRounds: 0, maxVoteStreak: 0, cumulativeScores: [], 
+            cumulativeScoreTemp: 0,
+            
+            pressureRounds: 0, soloAccusationRounds: 0, votedForWinnerRounds: 0,
+            judgmentsGiven: 0, judgmentsSevere: 0, confessionsAsTarget: 0,
+            confessionsPersuasive: 0,
+        };
+        
+        // Initialisation du tracker pour le badge "Serial Targeter"
+        playerStreakTrackers[playerId] = { currentTarget: null, currentStreak: 0 };
+    });
+
+    let hadConfessionJudgments = false;
+    let hadConfessionTargets = false;
+    let hadCoinTosses = false;
+    
+    // NOUVEAU: Pour le badge "Masked Avenger", on doit se souvenir des votes du round précédent
+    let previousRoundVotes = {};
+
+    rounds.forEach((round, index) => {
+        const voteCountsThisRound = {};
+        const voters = round.votes || {};
+        
+        Object.values(voters).forEach(targetId => {
+            voteCountsThisRound[targetId] = (voteCountsThisRound[targetId] || 0) + 1;
+        });
+        const maxVotes = Math.max(0, ...Object.values(voteCountsThisRound));
+        const majorityVotedPlayers = maxVotes > 0 ? Object.keys(voteCountsThisRound).filter(id => voteCountsThisRound[id] === maxVotes) : [];
+
+        // Stats basées sur les votes
+        Object.entries(voters).forEach(([voterId, targetId]) => {
+            if (!playerStats[voterId] || !playerStats[targetId]) return;
+            
+            playerStats[targetId].totalVotesReceived++;
+            playerStats[voterId].votesCast[targetId] = (playerStats[voterId].votesCast[targetId] || 0) + 1;
+            
+            // --- AJOUTS POUR LES BADGES ---
+            // Leader: a voté pour un des joueurs les plus ciblés
+            if (majorityVotedPlayers.includes(targetId)) {
+                playerStats[voterId].leaderVotes++;
+            }
+            // Maverick: a voté pour un joueur qui n'a reçu aucun autre vote
+            if (voteCountsThisRound[targetId] === 1) {
+                playerStats[voterId].maverickVotes++;
+            }
+            // Masked Avenger: a voté pour quelqu'un qui l'a ciblé au tour précédent
+            if (previousRoundVotes[targetId] === voterId) {
+                playerStats[voterId].avengerKills++;
+            }
+            
+            // Mise à jour du streak pour "Serial Targeter"
+            const tracker = playerStreakTrackers[voterId];
+            if (tracker.currentTarget === targetId) {
+                tracker.currentStreak++;
+            } else {
+                tracker.currentTarget = targetId;
+                tracker.currentStreak = 1;
+            }
+            if (tracker.currentStreak > playerStats[voterId].maxVoteStreak) {
+                playerStats[voterId].maxVoteStreak = tracker.currentStreak;
+            }
+            // --- FIN DES AJOUTS POUR LES BADGES DE VOTE ---
+            
+            // Pour les radars (logique existante, correcte)
+            if (voteCountsThisRound[targetId] === 1) playerStats[voterId].soloAccusationRounds++;
+            if (majorityVotedPlayers.includes(targetId)) playerStats[voterId].votedForWinnerRounds++;
+        });
+        
+        // Pression subie (Radar)
+        majorityVotedPlayers.forEach(winnerId => { if (playerStats[winnerId]) playerStats[winnerId].pressureRounds++; });
+        
+        // AJOUT: Badge "Diplomat" (n'a reçu aucun vote ce round)
+        Object.keys(players).forEach(playerId => {
+            if (!voteCountsThisRound[playerId]) {
+                playerStats[playerId].diplomatRounds++;
+            }
+        });
+        
+        // Cumul des scores pour le graphique d'évolution
+        Object.keys(players).forEach(playerId => {
+            playerStats[playerId].cumulativeScoreTemp += voteCountsThisRound[playerId] || 0;
+            playerStats[playerId].cumulativeScores.push(playerStats[playerId].cumulativeScoreTemp);
+        });
+
+        // Stats de confession
+        if (round.confessionEvent) {
+            const { chooserId, targetId, outcome, judgments, immunePlayerId } = round.confessionEvent;
+            
+            // --- AJOUTS POUR LES BADGES DE CONFESSION ---
+            if (playerStats[chooserId]) playerStats[chooserId].timesAsInquisitor++;
+            if (playerStats[immunePlayerId]) playerStats[immunePlayerId].timesUntouchable++;
+            if (outcome === 'pas convaincu' && playerStats[targetId]) {
+                playerStats[targetId].confessionFails++;
+            }
+            // --- FIN DES AJOUTS ---
+
+            if (playerStats[targetId]) {
+                hadConfessionTargets = true;
+                playerStats[targetId].confessionsAsTarget++;
+                if (outcome === 'convaincu') playerStats[targetId].confessionsPersuasive++;
+            }
+            
+            if (judgments && typeof judgments === 'object' && Object.keys(judgments).length > 0) {
+                hadConfessionJudgments = true;
+                Object.entries(judgments).forEach(([judgeId, judgment]) => {
+                    if (playerStats[judgeId]) {
+                        playerStats[judgeId].judgmentsGiven++;
+                        if (judgment === 'pas convaincu') playerStats[judgeId].judgmentsSevere++;
+                    }
+                });
+            }
+        }
+        
+        if (round.coinTosses) { /* ... (logique existante, correcte) ... */ }
+
+        // NOUVEAU: Mettre à jour les votes pour le tour suivant (pour "Masked Avenger")
+        previousRoundVotes = voters;
+    });
+
+    // Étape finale : Calcul des pourcentages pour les radars (inchangé)
+    Object.values(playerStats).forEach(p => {
+        delete p.cumulativeScoreTemp;
+        p.pressurePercent = totalRounds > 0 ? (p.pressureRounds / totalRounds) * 100 : 0;
+        p.soloAccusationPercent = totalRounds > 0 ? (p.soloAccusationRounds / totalRounds) * 100 : 0;
+        p.votedForWinnerPercent = totalRounds > 0 ? (p.votedForWinnerRounds / totalRounds) * 100 : 0;
+        p.severityPercent = p.judgmentsGiven > 0 ? (p.judgmentsSevere / p.judgmentsGiven) * 100 : 0;
+        p.persuasionPercent = p.confessionsAsTarget > 0 ? (p.confessionsPersuasive / p.confessionsAsTarget) * 100 : 0;
+        p.headsPercent = p.totalTosses > 0 ? (p.successfulTosses / p.totalTosses) * 100 : 0;
+    });
+
+    return {
+        gameSummary: { startTime, endTime, totalRounds },
+        playerStats,
+        players,
+        gameFeatures: { hadConfessionJudgments, hadConfessionTargets, hadCoinTosses }
+    };
+}
+
+/**
+ * MODIFIÉ : Fonction centrale qui orchestre le rendu dynamique
+ */
+function processAndRenderData(gameData) {
+    try {
+        const processedData = processGameData(gameData);
+        if (!processedData) return;
+        
+        // Calcule les badges, qui sont nécessaires pour le rendu
+        processedData.playerAwards = calculateAndAssignBadges(processedData.playerStats);
+        
+        // Cache l'écran de chargement
+        document.getElementById('loading-state').style.display = 'none';
+        
+        // Affiche le conteneur principal des résultats
+        const mainContainer = document.getElementById('results-content');
+        mainContainer.style.display = 'block';
+
+        // Lance la nouvelle fonction de rendu en cascade
+        renderSectionsInSequence(processedData);
+
+    } catch (error) {
+        showError(error.message);
+    }
+}
+
+/**
+ * NOUVEAU : Crée et anime chaque section l'une après l'autre.
+ * @param {object} processedData - Les données complètes de la partie.
+ */
+function renderSectionsInSequence(processedData) {
+    const mainContainer = document.getElementById('results-content');
+    mainContainer.innerHTML = ''; // S'assure que le conteneur est vide
+
+    SECTIONS_CONFIG.forEach((sectionConfig, index) => {
+        // 1. Créer l'élément de la section
+        const sectionEl = document.createElement('section');
+        sectionEl.id = sectionConfig.id;
+        sectionEl.className = 'results-card revealable'; // Commence caché
+
+        // 2. Construire son contenu interne
+        let innerHTML = '';
+        if (sectionConfig.title) innerHTML += `<h2>${sectionConfig.title}</h2>`;
+        if (sectionConfig.subtitle) innerHTML += `<p class="card-subtitle">${sectionConfig.subtitle}</p>`;
+        innerHTML += sectionConfig.content;
+        sectionEl.innerHTML = innerHTML;
+
+        // 3. Ajouter la section au DOM
+        mainContainer.appendChild(sectionEl);
+
+        // 4. Déclencher l'animation d'apparition et le rendu du contenu avec un délai
+        setTimeout(() => {
+            sectionEl.classList.add('is-visible');
+            
+            // Une fois la carte visible, on appelle la fonction de rendu associée
+            if (sectionConfig.renderFn) {
+                sectionConfig.renderFn(processedData);
+            }
+        }, index * 6000); // 6000ms de délai entre chaque carte
+    });
+
+    // N'oubliez pas de rajouter le bouton "Play Again" à la fin
+    setTimeout(() => {
+        const footerActions = document.createElement('div');
+        footerActions.className = 'footer-actions';
+        footerActions.innerHTML = `<a href="#" id="home-link" class="button-like-link">Play Again!</a>`;
+        mainContainer.appendChild(footerActions);
+        setupHomeLinks(); // Re-brancher le lien
+    }, SECTIONS_CONFIG.length * 300);
+}
+
+/**
+ * Calcule qui gagne chaque badge et l'assigne aux joueurs.
+ * N'attribue des badges que si le score est significatif (généralement > 0).
+ */
+function calculateAndAssignBadges(playerStats) {
+    const playersArray = Object.values(playerStats);
+    if (playersArray.length === 0) return {};
+
+    const awards = {};
+    Object.keys(playerStats).forEach(id => { awards[id] = []; });
+
+    // MODIFICATION ICI : On stocke l'objet joueur complet avec le badge
+    const assignBadge = (badgeKey, playersToAward) => {
+        if (!playersToAward || playersToAward.length === 0) return;
+        playersToAward.forEach(p => {
+            awards[p.id].push({ 
+                key: badgeKey, 
+                ...BADGE_MANIFEST[badgeKey],
+                playerData: p // On stocke l'objet joueur pour un formatage dynamique plus tard
+            });
+        });
+    };
+
+    // Le reste de la fonction est INCHANGÉ. La logique d'attribution reste la même.
+    // --- HELPER `findWinners` MODIFIÉ ---
+    const findWinners = (metric, compareFn = (a, b) => b - a, threshold = 0) => {
+        const candidates = playersArray.filter(p => typeof p[metric] === 'number');
+        if (candidates.length === 0) return [];
+        const sorted = [...candidates].sort((a, b) => compareFn(a[metric], b[metric]));
+        const bestScore = sorted[0][metric];
+        if (bestScore <= threshold) return [];
+        return sorted.filter(p => p[metric] === bestScore);
+    };
+    
+    const findRatioWinner = (compareFn) => {
+        const candidates = playersArray.filter(p => p.totalTosses > 0);
+        if (candidates.length === 0) return [];
+        candidates.sort((a,b) => {
+            const ratioA = a.successfulTosses / a.totalTosses;
+            const ratioB = b.successfulTosses / b.totalTosses;
+            return compareFn(ratioA, ratioB);
+        });
+        const bestRatio = candidates[0].successfulTosses / candidates[0].totalTosses;
+        return candidates.filter(p => (p.successfulTosses / p.totalTosses) === bestRatio);
+    };
+    
+    // --- Attribution de chaque badge avec le seuil de pertinence ---
+    assignBadge('voteMagnet', findWinners('totalVotesReceived'));
+    const ninjaWinners = findWinners('totalVotesReceived', (a, b) => a - b);
+    if (ninjaWinners.length < playersArray.length) {
+      assignBadge('ninja', ninjaWinners);
+    }
+    assignBadge('leader', findWinners('leaderVotes'));
+    assignBadge('maverick', findWinners('maverickVotes'));
+    assignBadge('inquisitor', findWinners('timesAsInquisitor'));
+    assignBadge('untouchable', findWinners('timesUntouchable'));
+    assignBadge('maskedAvenger', findWinners('avengerKills'));
+    assignBadge('diplomat', findWinners('diplomatRounds'));
+    assignBadge('serialTargeter', findWinners('maxVoteStreak', (a, b) => b - a, 1));
+    assignBadge('notConvincing', findWinners('confessionFails'));
+
+    let maxVotesToOne = 0;
+    let vendettaWinner = [];
+    playersArray.forEach(p => {
+        const mostVotes = Math.max(0, ...Object.values(p.votesCast));
+        if (mostVotes > maxVotesToOne) {
+            maxVotesToOne = mostVotes;
+            vendettaWinner = [p];
+        } else if (mostVotes === maxVotesToOne && maxVotesToOne > 0) {
+            vendettaWinner.push(p);
+        }
+    });
+    if (maxVotesToOne > 1) {
+        assignBadge('vendetta', vendettaWinner);
+    }
+
+    assignBadge('godOfLuck', findRatioWinner((a, b) => b - a));
+    assignBadge('inAFog', findRatioWinner((a, b) => a - b));   
+    
+    return awards;
+}
+
+// --- Fonctions de Rendu (Modifiées ou Nouvelles) ---
+
+
+/**
+ * MODIFIÉ : La fonction de rendu des badges déclenche maintenant l'animation des icônes.
+ */
+function renderPlayerBadges(playerAwards, playerStats) {
+    const container = document.getElementById('player-badges-container');
+    if (!container) return;
+    container.innerHTML = ''; 
+
+    const playerIds = Object.keys(playerStats);
+
+    playerIds.forEach((playerId, cardIndex) => {
+        const player = playerStats[playerId];
+        const awards = playerAwards[playerId] || [];
+        
+        // 1. Création de la carte (elle sera initialement invisible grâce au CSS)
+        const card = document.createElement('div');
+        card.className = 'player-badge-card';
+
+        let badgesHTML = '';
+        if (awards.length > 0) {
+            badgesHTML = awards.map(badge => {
+                const description = badge.formatDesc ? badge.formatDesc(badge.playerData) : badge.desc;
+                const imageSrc = badgeImageData[badge.key];
+                const imageTag = imageSrc ? `<img src="${imageSrc}" alt="${badge.title}" class="badge-icon-img">` : '';
+                return `<span class="badge-item" data-tooltip="${badge.title}: ${description}">${imageTag}</span>`;
+            }).join('');
+        } else {
+            badgesHTML = `<p class="no-badges-message">No special awards this time.</p>`;
+        }
+        
+        card.innerHTML = `
+            <div class="player-badge-info">
+                <img src="${player.avatarSrc}" alt="${player.pseudo}" class="player-badge-avatar">
+                <span class="player-badge-name">${player.pseudo}</span>
+            </div>
+            <div class="player-badges-list">${badgesHTML}</div>`;
+            
+        container.appendChild(card);
+        
+        // 2. Orchestration des animations
+        // Premier setTimeout : déclenche l'apparition de la CARTE avec un délai progressif
+        setTimeout(() => {
+            card.classList.add('card-is-visible');
+
+            // Si le joueur a des badges, on lance leur animation après un court instant
+            // pour que la carte ait le temps d'apparaître un peu.
+            if (awards.length > 0) {
+                const badgeItems = card.querySelectorAll('.badge-item');
+                
+                // Second setTimeout (imbriqué) : déclenche l'animation des BADGES
+                badgeItems.forEach((badgeItem, badgeIndex) => {
+                    setTimeout(() => {
+                        badgeItem.classList.add('pop-in');
+                    }, badgeIndex * 400); // Délai de 1000ms entre chaque badge
+                });
+            }
+        }, cardIndex * 2000); // Délai de 3000ms entre chaque CARTE
+    });
+}
+
+function renderSummary(gameSummary) {
+    document.getElementById('total-rounds').textContent = gameSummary.totalRounds;
+    const { startTime, endTime } = gameSummary;
+    let durationText = "--:--";
+    if (typeof startTime === 'number' && typeof endTime === 'number' && (endTime - startTime) > 0) {
+        const durationSeconds = Math.round((endTime - startTime) / 1000);
+        const minutes = Math.floor(durationSeconds / 60);
+        const seconds = durationSeconds % 60;
+        durationText = `${minutes}:${seconds.toString().padStart(2, '0')}`;
+    }
+    document.getElementById('game-duration').textContent = durationText;
+}
+
+
+/**
+ * Affiche le graphique d'évolution des scores avec des animations améliorées et des légendes personnalisées.
+ * 
+ * @param {object} playerStats - L'objet contenant les statistiques des joueurs.
+ * @param {number} totalRounds - Le nombre total de tours dans la partie.
+ */
+function renderScoreEvolutionChart(playerStats, totalRounds) {
+    const ctx = document.getElementById('scoreEvolutionChart').getContext('2d');
+
+    // Si un graphique existe déjà sur ce canvas, on le détruit pour en créer un nouveau
+    if (window.myScoreChart) {
+        window.myScoreChart.destroy();
+    }
+
+    const datasets = Object.values(playerStats).map((player, index) => ({
+        label: player.pseudo,
+        data: player.cumulativeScores,
+        borderColor: CHART_PALETTE[index % CHART_PALETTE.length],
+        fill: false,
+        tension: 0.3,
+        borderWidth: 4,
+        pointBackgroundColor: CHART_PALETTE[index % CHART_PALETTE.length],
+        pointBorderColor: THEME_COLORS.lightBg,
+        pointBorderWidth: 2,
+        pointRadius: 5,
+        pointHoverRadius: 8
+    }));
+    
+    // MODIFICATION 1 : Logique d'animation progressive
+    const totalDuration = 3000; // Durée totale de l'animation en ms (plus lente)
+    // Calcule la durée pour dessiner chaque segment de ligne
+    const delayBetweenPoints = totalDuration / totalRounds;
+
+    // Fonction pour déterminer le point de départ de l'animation sur l'axe Y
+    const previousY = (ctx) => {
+        // Pour le premier point (index 0), on part du bas du graphique (valeur 0)
+        if (ctx.index === 0) {
+            return ctx.chart.scales.y.getPixelForValue(0);
+        } 
+        // Pour les autres points, on part de la position Y du point précédent
+        else {
+            return ctx.chart.getDatasetMeta(ctx.datasetIndex).data[ctx.index - 1].getProps(['y'], true).y;
+        }
+    };
+    
+    // Définition de l'animation progressive par propriété
+    const progressiveAnimation = {
+        x: {
+            type: 'number',
+            easing: 'linear',
+            duration: delayBetweenPoints,
+            from: NaN, // Le point est initialement invisible sur l'axe X
+            delay(ctx) {
+                if (ctx.type !== 'data' || ctx.xStarted) {
+                    return 0;
+                }
+                ctx.xStarted = true; // Marque le point comme ayant démarré son animation
+                return ctx.index * delayBetweenPoints; // Chaque point démarre après le précédent
+            }
+        },
+        y: {
+            type: 'number',
+            easing: 'linear',
+            duration: delayBetweenPoints,
+            from: previousY, // Le point part de la position du point précédent
+            delay(ctx) {
+                if (ctx.type !== 'data' || ctx.yStarted) {
+                    return 0;
+                }
+                ctx.yStarted = true; // Marque le point comme ayant démarré son animation
+                return ctx.index * delayBetweenPoints; // Délai synchronisé avec l'axe X
+            }
+        }
+    };
+
+
+    window.myScoreChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: Array.from({ length: totalRounds }, (_, i) => `Round ${i + 1}`),
+            datasets
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    position: 'top',
+                    labels: {
+                        font: CHART_DEFAULTS.font,
+                        // MODIFICATION 2 : Style de la légende pour simuler une ligne
+                        boxWidth: 40,
+                        boxHeight: 2,
+                        useBorderRadius: true,
+                        borderRadius: 1
+                    }
+                },
+                tooltip: CHART_DEFAULTS.tooltip
+            },
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    title: { display: true, text: 'Cumulative Votes Received', font: CHART_DEFAULTS.font },
+                    ticks: { precision: 0, font: CHART_DEFAULTS.font },
+                    grid: { color: THEME_COLORS.gridColor }
+                },
+                x: {
+                    title: { display: true, text: 'Game Rounds', font: CHART_DEFAULTS.font },
+                    ticks: { font: CHART_DEFAULTS.font },
+                    grid: { color: THEME_COLORS.gridColor }
+                }
+            },
+            // On applique notre nouvelle configuration d'animation
+            animation: progressiveAnimation 
+        }
+    });
+}
+
+function renderRankingChart(playerStats) {
+    const sortedPlayers = Object.values(playerStats).sort((a, b) => b.totalVotesReceived - a.totalVotesReceived);
+    const avatarImages = sortedPlayers.map(p => { const img = new Image(); img.src = p.avatarSrc; return img; });
+    const avatarLabelsPlugin = {
+        id: 'avatarLabels',
+        afterDraw(chart) {
+            const { ctx, scales: { y } } = chart;
+            const imageSize = 30;
+            ctx.save();
+            y.ticks.forEach((tick, index) => {
+                const yPos = y.getPixelForTick(index);
+                const xPos = y.left - imageSize - 10;
+                ctx.beginPath();
+                ctx.arc(xPos + imageSize / 2, yPos, imageSize / 2, 0, 2 * Math.PI);
+                ctx.closePath();
+                ctx.clip();
+                ctx.drawImage(avatarImages[index], xPos, yPos - imageSize / 2, imageSize, imageSize);
+                ctx.restore();
+                ctx.save();
+            });
+            ctx.restore();
+        }
+    };
+     const ctx = document.getElementById('rankingChart').getContext('2d');
+    new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: sortedPlayers.map(p => p.pseudo),
+            datasets: [{
+                label: 'Total Votes Received',
+                data: sortedPlayers.map(p => p.totalVotesReceived),
+                backgroundColor: 'rgba(249, 122, 61, 0.7)',
+                borderColor: 'rgba(249, 122, 61, 1)',
+                borderWidth: 2, borderRadius: 5,
+            }]
+        },
+        options: {
+            indexAxis: 'y', responsive: true, maintainAspectRatio: false,
+            // --- NOUVELLE ANIMATION ---
+            animation: {
+                duration: 1500, // Durée de l'animation de chaque barre
+                // Crée un effet de cascade en retardant chaque barre
+                delay: (context) => {
+                    if (context.type !== 'data') return 0;
+                    return context.dataIndex * 500; // Chaque barre commence 100ms après la précédente
+                }
+            },
+            layout: { padding: { left: 45 } },
+            plugins: {
+                legend: { display: false },
+                tooltip: { callbacks: { label: (context) => `${context.raw} votes received` } },
+            },
+            scales: {
+                x: { beginAtZero: true, grid: { color: 'rgba(74, 47, 72, 0.1)' }, ticks: { precision: 0 } },
+                y: { grid: { display: false } }
+            }
+        },
+        plugins: [avatarLabelsPlugin]
+    });
+}
+
+/**
+ * Construit la table de la heatmap et anime chaque cellule individuellement.
+ * @param {object} playerStats - Les statistiques calculées des joueurs.
+ * @param {string[]} playerIds - Un tableau des ID des joueurs.
+ */
+function renderHeatmap(playerStats, playerIds) {
+    const container = document.getElementById('heatmap-container');
+    container.innerHTML = '';
+    const table = document.createElement('table');
+
+    // ... (la construction de la table 'header' et 'tbody' est inchangée) ...
+    const header = table.createTHead().insertRow();
+    header.insertCell().innerHTML = 'Voter<br>↓';
+    playerIds.forEach(targetId => {
+        const th = document.createElement('th');
+        th.innerHTML = `<img src="${playerStats[targetId].avatarSrc}" alt="${playerStats[targetId].pseudo}" class="player-avatar"><span>${playerStats[targetId].pseudo}</span>`;
+        header.appendChild(th);
+    });
+    const tbody = table.createTBody();
+    playerIds.forEach(voterId => {
+        const row = tbody.insertRow();
+        const th = document.createElement('th');
+        th.className = 'voter-header';
+        th.innerHTML = `<img src="${playerStats[voterId].avatarSrc}" alt="${playerStats[voterId].pseudo}" class="player-avatar"><span>${playerStats[voterId].pseudo}</span>`;
+        row.appendChild(th);
+        playerIds.forEach(targetId => {
+            const cell = row.insertCell();
+            if (voterId === targetId) {
+                cell.className = 'is-self';
+                cell.innerHTML = '—';
+                cell.style.opacity = 1; // La cellule diagonale est visible immédiatement
+            } else {
+                const votes = playerStats[voterId].votesCast[targetId] || 0;
+                cell.textContent = votes > 0 ? votes : '';
+                cell.dataset.votes = votes;
+                if (votes >= 4) cell.classList.add('hot');
+            }
+        });
+    });
+
+    // On ajoute la table (encore invisible) au DOM
+    container.appendChild(table);
+
+    // --- NOUVELLE LOGIQUE D'ANIMATION EN CASCADE ---
+    // 1. On sélectionne toutes les cellules de données (pas les headers, pas la diagonale)
+    const cellsToAnimate = table.querySelectorAll('td:not(.is-self)');
+
+    // 2. On parcourt chaque cellule pour lui appliquer une animation avec un délai progressif
+    cellsToAnimate.forEach((cell, index) => {
+        const delay = index * 15; // 15ms de décalage entre chaque cellule
+        // On applique directement le style d'animation via JavaScript
+        cell.style.animation = `fadeInCell 0.4s ${delay}ms ease-out forwards`;
+    });
+}
+
+/**
+ * Crée un graphique à barres empilées avec une animation de "construction".
+ * @param {object} playerStats - Les statistiques calculées des joueurs.
+ */
+function renderStackedVoteChart(playerStats) {
+    const voters = Object.values(playerStats);
+    const targets = Object.values(playerStats);
+    
+    const datasets = targets.map((target, index) => ({
+        label: target.pseudo,
+        data: voters.map(voter => voter.votesCast[target.id] || 0),
+        backgroundColor: CHART_PALETTE[index % CHART_PALETTE.length],
+        borderColor: THEME_COLORS.purple,
+        borderWidth: 2,
+        borderRadius: 3
+    }));
+    
+    const ctx = document.getElementById('stackedVoteChart').getContext('2d');
+    const chart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: voters.map(voter => voter.pseudo),
+            datasets: datasets
+        },
+        options: {
+            responsive: true, maintainAspectRatio: false,
+            plugins: {
+                legend: { display: false }, // On désactive la légende par défaut
+                tooltip: {
+                    ...CHART_DEFAULTS.tooltip,
+                    callbacks: {
+                        label: function(context) {
+                            const voterName = context.chart.data.labels[context.dataIndex];
+                            const targetName = context.dataset.label;
+                            const voteCount = context.raw;
+                            return voteCount > 0 ? `${voterName} -> ${targetName}: ${voteCount} vote(s)` : null;
+                        }
+                    }
+                }
+            },
+            scales: {
+                x: { stacked: true, grid: { display: false }, ticks: { font: CHART_DEFAULTS.font } },
+                y: {
+                    stacked: true, beginAtZero: true,
+                    title: { display: true, text: 'Total Votes Cast by Player', font: CHART_DEFAULTS.font },
+                    ticks: { precision: 0, font: CHART_DEFAULTS.font },
+                    grid: { color: THEME_COLORS.gridColor }
+                }
+            },
+            animation: {
+                duration: 1500,
+                delay: (context) => context.datasetIndex * 500
+            }
+        }
+    });
+    
+    // Génération de la légende HTML personnalisée
+    const legendContainer = document.getElementById('stacked-chart-legend');
+    legendContainer.innerHTML = '';
+    chart.data.datasets.forEach((dataset, i) => {
+        const targetPlayer = targets.find(p => p.pseudo === dataset.label);
+        if (!targetPlayer) return;
+
+        const legendItem = document.createElement('div');
+        legendItem.className = 'legend-item';
+        
+        const colorBox = document.createElement('span');
+        colorBox.className = 'legend-swatch';
+        colorBox.style.backgroundColor = dataset.backgroundColor;
+
+        const avatar = document.createElement('img');
+        avatar.src = targetPlayer.avatarSrc;
+        avatar.className = 'legend-avatar';
+
+        const text = document.createElement('span');
+        text.textContent = dataset.label;
+        
+        legendItem.appendChild(colorBox);
+        legendItem.appendChild(avatar);
+        legendItem.appendChild(text);
+        legendContainer.appendChild(legendItem);
+    });
+}
+
+/**
+ * MODIFIÉ : Crée un graphique en réseau interactif avec une physique ajustée pour éviter le surpeuplement.
+ * @param {object} playerStats - Les statistiques calculées des joueurs.
+ */
+function renderNetworkGraph(playerStats) {
+    const nodes = Object.values(playerStats).map(player => ({
+        id: player.id,
+        shape: 'circularImage',
+        image: player.avatarSrc,
+        label: player.pseudo,
+        size: 30,
+    }));
+
+    const edges = [];
+    Object.values(playerStats).forEach(voter => {
+        Object.entries(voter.votesCast).forEach(([targetId, voteCount]) => {
+            if (voteCount > 0) {
+                edges.push({
+                    from: voter.id,
+                    to: targetId,
+                    value: voteCount,
+                    title: `${voter.pseudo} voted for ${playerStats[targetId].pseudo} ${voteCount} times`,
+                    arrows: 'to',
+                });
+            }
+        });
+    });
+
+    const container = document.getElementById('network-graph-container');
+    const data = { nodes, edges };
+
+    // ===================================================================
+    // NOUVELLE CONFIGURATION DES OPTIONS POUR DÉSENCOMBRER LE GRAPHIQUE
+    // ===================================================================
+    const options = {
+        nodes: {
+            borderWidth: 3,
+            color: {
+                border: 'var(--clr-primary-purple)',
+                background: 'var(--clr-card-bg)'
+            },
+            font: {
+                color: 'var(--clr-text-dark)',
+                face: 'Poppins',
+            },
+            shapeProperties: {
+                useBorderWithImage: true
+            }
+        },
+        edges: {
+            color: {
+                color: 'var(--clr-accent-teal)',
+                highlight: 'var(--clr-primary-orange)',
+                hover: 'var(--clr-primary-orange)',
+            },
+            width: 2,
+            scaling: {
+                min: 1,
+                max: 12,
+            },
+            // AMÉLIORATION : Les arêtes sont maintenant courbées pour éviter les nœuds
+            smooth: {
+                type: 'dynamic', // 'dynamic' is great, 'curvedCW' also works well
+                roundness: 0.1
+            }
+        },
+        // AMÉLIORATION : La section physique est entièrement revue
+        physics: {
+            enabled: true,
+            solver: 'barnesHut',
+            barnesHut: {
+                // La "force de répulsion". Plus le chiffre est négatif, plus les nœuds se repoussent.
+                // C'est le paramètre le plus important à ajuster. (-2000 est la valeur par défaut)
+                gravitationalConstant: -15000, 
+                
+                // La force qui attire tout vers le centre. On la réduit pour laisser le graphe s'étendre.
+                centralGravity: 0.05, 
+                
+                // La "longueur de ressort" idéale pour les arêtes. On l'augmente pour espacer les nœuds.
+                springLength: 250, 
+                
+                // La "rigidité" du ressort. Une valeur plus faible le rend plus flexible.
+                springConstant: 0.02,
+                
+                // L'amortissement, pour que le graphe se stabilise plus vite.
+                damping: 0.09,
+            },
+        },
+        interaction: {
+            hover: true,
+            tooltipDelay: 200,
+        },
+    };
+
+    const network = new vis.Network(container, data, options);
+
+    // BONUS : Une fois que la simulation physique est terminée, on la désactive
+    // pour que les utilisateurs puissent déplacer les nœuds sans qu'ils "rebondissent".
+    network.on("stabilizationIterationsDone", function () {
+        network.setOptions( { physics: false } );
+    });
+}
+
+
+/**
+ * NOUVEAU: Crée les graphiques radar personnels pour chaque joueur.
+ * Les axes du radar sont générés dynamiquement en fonction des événements de la partie.
+ * @param {object} playerStats - Les statistiques calculées des joueurs.
+ * @param {object} gameFeatures - Drapeaux indiquant si certaines phases de jeu ont eu lieu.
+ */
+function renderPersonalRadars(playerStats, gameFeatures) {
+    const container = document.getElementById('personal-radars-container');
+    container.innerHTML = '';
+
+    // 1. AJOUT : Enrichir la configuration avec une description pour le tooltip.
+    // Le placeholder "{value}" sera remplacé par le score du joueur.
+     const allPossibleAxes = {
+        pressure:   { 
+            label: 'Pression Subie',
+            key: 'pressurePercent',
+            description: (value) => [
+                'A été la cible principale',
+                `dans ${value}% des rounds.`
+            ]
+        },
+        solo:       { 
+            label: 'Vote Isolé',
+            key: 'soloAccusationPercent',
+            description: (value) => [
+                'A voté seul contre une cible',
+                `dans ${value}% des rounds.`
+            ]
+        },
+        winner:     { 
+            label: 'Bonne Cible',
+            key: 'votedForWinnerPercent',
+            description: (value) => [
+                'A voté pour le gagnant du round',
+                `dans ${value}% des cas.`
+            ]
+        },
+        severity:   { 
+            label: 'Juge Sévère',
+            key: 'severityPercent',
+            description: (value) => [
+                'A jugé "non convaincant"',
+                `dans ${value}% de ses verdicts.`
+            ]
+        },
+        persuasion: { 
+            label: 'Persuasion',
+            key: 'persuasionPercent',
+            description: (value) => [
+                'A été jugé "convaincant"',
+                `lors de ${value}% de ses confessions.`
+            ]
+        },
+        luck:       { 
+            label: 'Chance',
+            key: 'headsPercent',
+            description: (value) => [
+                'A obtenu PILE',
+                `sur ${value}% de ses lancers.`
+            ]
+        },
+    };
+
+
+    const activeAxesConfig = [
+        allPossibleAxes.pressure,
+        allPossibleAxes.solo,
+        allPossibleAxes.winner,
+    ];
+    if (gameFeatures.hadConfessionJudgments) activeAxesConfig.push(allPossibleAxes.severity);
+    if (gameFeatures.hadConfessionTargets) activeAxesConfig.push(allPossibleAxes.persuasion);
+    if (gameFeatures.hadCoinTosses) activeAxesConfig.push(allPossibleAxes.luck);
+    
+    if (activeAxesConfig.length < 3) {
+        container.innerHTML = `<p class="card-subtitle" style="width:100%; text-align:center;">Pas assez de données pour un bilan de joueur détaillé sur cette partie.</p>`;
+        return;
+    }
+
+    const chartLabels = activeAxesConfig.map(axis => axis.label);
+
+    Object.values(playerStats).forEach(player => {
+        const card = document.createElement('div');
+        card.className = 'radar-card';
+        
+        card.innerHTML = `
+            <div class="radar-player-info">
+                <img src="${player.avatarSrc}" alt="${player.pseudo}" class="radar-player-avatar">
+                <span>Profil de ${player.pseudo}</span>
+            </div>
+            <div class="radar-chart-container">
+                <canvas id="radar-chart-${player.id}"></canvas>
+            </div>
+        `;
+        container.appendChild(card);
+
+        const playerData = activeAxesConfig.map(axis => player[axis.key] || 0);
+        const ctx = document.getElementById(`radar-chart-${player.id}`).getContext('2d');
+
+        new Chart(ctx, {
+            type: 'radar',
+            data: {
+                labels: chartLabels,
+                datasets: [{
+                    label: player.pseudo,
+                    data: playerData,
+                    backgroundColor: 'rgba(249, 122, 61, 0.4)',
+                    borderColor: 'rgba(249, 122, 61, 1)',
+                    borderWidth: 2,
+                    pointBackgroundColor: 'rgba(249, 122, 61, 1)',
+                }]
+            },
+           options: {
+                responsive: true,
+                maintainAspectRatio: true,
+                layout: {
+                    padding: 20
+                },
+                plugins: {
+                    legend: { display: false },
+                    // 2. MODIFICATION : Le callback du tooltip est maintenant plus intelligent.
+                    tooltip: {
+                        ...CHART_DEFAULTS.tooltip,
+                        callbacks: {
+                            // Le titre du tooltip reste le label de l'axe (ex: "Pression Subie")
+                            title: function(tooltipItems) {
+                                return tooltipItems[0].label;
+                            },
+                            // Le corps du tooltip affiche la description détaillée.
+                            label: function(context) {
+                                const axisIndex = context.dataIndex;
+                                const axisConfig = activeAxesConfig[axisIndex];
+                                const value = Math.round(context.raw);
+                                
+                                // On appelle la fonction et on retourne directement le tableau qu'elle produit.
+                                return axisConfig.description(value);
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    r: {
+                        beginAtZero: true, max: 100,
+                        angleLines: { color: THEME_COLORS.gridColor },
+                        grid: { color: THEME_COLORS.gridColor },
+                        pointLabels: {
+                            font: { ...CHART_DEFAULTS.font, size: 10, weight: '600' }, 
+                            color: THEME_COLORS.green
+                        },
+                        ticks: {
+                            display: false,
+                            stepSize: 25,
+                        }
+                    }
+                },
+                animation: { duration: 3000, easing: 'easeOutQuart' }
+            }
+        });
+    });
+}
+</script>

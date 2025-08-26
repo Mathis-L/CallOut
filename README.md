@@ -23,10 +23,12 @@
 
 ## ✨ Main Features
 
-*   **Real-Time Multiplayer Game:** Game state synchronization among all participants via Firebase.
+*   **Real-Time Multiplayer Game:** Game state synchronization among all participants via Firebase, secured with authentication rules.
 *   **Lobby System:** Create and join games via unique codes.
 *   **Interactive Voting Mechanism:** Players vote to answer questions concerning other participants.
-*   **Thematic Question Sets:** The game leader can choose from different sets of questions (Gentle, Mix, Extreme).
+*   **Thematic Question Sets:** The game leader can choose from different sets of questions (Chill, Spicy Mix, Extra Hot).
+*   **🔥 NEW - Confession Mode:** A surprise round that puts one player in the hot seat! The most-targeted player from the previous round gets their revenge by choosing who must answer a juicy, personal question. Other players then vote on whether they believe the answer, granting temporary immunity to the convincing confessor.
+*   **📊 NEW - Detailed Results Page:** At the end of the game, a dedicated page displays a complete breakdown of stats, player awards, and data visualizations like heatmaps and score evolution charts.
 *   **Animated Coin Toss:** Introduces an element of chance for revealing votes.
 *   **Customizable Avatars:** Players can choose an avatar to represent themselves.
 *   **Player Presence Management:** Detection of connections and disconnections.
@@ -46,11 +48,12 @@ This repository is organized as follows:
 
 *   **/GAS**: Contains all code files intended for deployment on Google Apps Script.
     *   `Code.gs`: Main backend script.
-    *   `HomePage.html`, `LobbyPage.html`, `GamePage.html`: HTML pages for the user interface.
-    *   `GamePage.css.html`: CSS styles for the game page.
-    *   `GamePage.js.html`: Client-side JavaScript scripts for the game page.
+    *   `HomePage.html`, `LobbyPage.html`, `GamePage.html`, `GameResultsPage.html`: HTML pages for the user interface.
+    *   `GamePage.css.html`, `GameResultsPage.css.html`: CSS styles for the game and results pages.
+    *   `GamePage.js.html`, `GameResultsPage.js.html`: Client-side JavaScript scripts for the game and results pages.
     *   `Questions.html`: HTML file containing the list of game questions.
     *   `AvatarData.html`: HTML file containing the list of avatars (generated or manually configured).
+*   **/Firebase rules**: Contains the JSON file for the Firebase Realtime Database security rules.
 *   **/Scripts**: Includes the utility Python script for avatar generation.
     *   `generate_avatars.py`: Script to convert PNG images to Base64 format and generate the `AvatarData.html` file.
     *   `requirements.txt`: List of Python dependencies for the `generate_avatars.py` script.
@@ -71,18 +74,10 @@ To deploy your own instance of Call Out 🫵, follow these steps:
 **2. Firebase Configuration:**
 
 *   Create a new Firebase project or use an existing one.
+*   Enable **Authentication** and activate the **Anonymous** sign-in method.
 *   Enable and configure **Realtime Database**.
     *   When creating, choose an appropriate region.
-    *   **Security Rules (Important):** For initial development, you can use open rules. **These rules are NOT SECURE for a production environment.**
-        ```json
-        {
-          "rules": {
-            ".read": true,
-            ".write": true
-          }
-        }
-        ```
-        *It is highly recommended to implement Firebase authentication and granular security rules for production.*
+    *   **Security Rules (Important):** Go to the "Rules" tab of your Realtime Database and paste the content from the `/Firebase rules/rules.json` file. These rules are secure and rely on Firebase Authentication to control read/write access.
 *   In **Project settings** > **General**, register a new **Web app**.
     *   Do NOT check "Also set up Firebase Hosting...".
 *   Copy the provided `firebaseConfig` object. You will need the `apiKey`, `authDomain`, `databaseURL`, and `projectId` values.
@@ -111,20 +106,20 @@ To deploy your own instance of Call Out 🫵, follow these steps:
 
 **(Optional) Configuring the Trigger for Automatic Cleanup:**
 Lobby deletion management in the database is not reliable. To address this issue and clean the database, I use the Firebase Realtime Database REST API. However, this method is **deprecated and obsolete**:
-*   Generate a `FIREBASE_DATABASE_SECRET`:
+*   Generate a `FIREBASE_DATABASE_ID` (this is the legacy database secret):
     *   In your Firebase project, click Project Settings ⚙️ on the left > Service accounts > Database secrets > Show Secret.
 *   Configure GAS:
-    *    **Script Properties** (Project Settings ⚙️ > Script properties (at the bottom of the page)) with `FIREBASE_DATABASE_SECRET`
-    *   To run the `cleanUpLobbies` function periodically (e.g., every Monday morning):
+    *    **Script Properties** (Project Settings ⚙️ > Script properties (at the bottom of the page)) with `FIREBASE_DATABASE_ID`
+    *   To run the `cleanUpOldLobbies` function periodically (e.g., every Monday morning):
         *   In the Apps Script editor, go to the **Triggers** section (⏰ icon).
         *   Click **Add Trigger**.
-        *   Configure to run `cleanUpLobbies` on a `Time-driven` event (e.g., `Hourly timer`).
+        *   Configure to run `cleanUpOldLobbies` on a `Time-driven` event (e.g., `Hourly timer`).
 
 ## 🔧 Customization
 
 **1. Adding or Modifying Questions:**
 
-*   Modify the `Questions.html` file (located in `/GAS` for deployment) by adding or changing the strings in the `gentleQuestions`, `mixQuestions`, or `extremeQuestions` arrays.
+*   Modify the `Questions.html` file (located in `/GAS` for deployment) by adding or changing the strings in the `gentleQuestions`, `mixQuestions`, `extremeQuestions`, or the new `...ConfessionQuestions` arrays.
 *   After any modification, **redeploy** your Apps Script web application (Deploy > Manage deployments > choose your deployment > Edit ✏️ > New version & Description (optional) > Deploy).
 
 **2. Adding or Modifying Avatars:**
@@ -165,14 +160,16 @@ Lobby deletion management in the database is not reliable. To address this issue
 
 1.  Access the Web app URL that you deployed.
 2.  Enter a nickname and select an avatar.
-3.  **To create a game:** Click "Create Game" and share the generated game code.
-4.  **To join a game:** Enter your nickname, choose an avatar, enter the provided game code, and click "Join Game".
-5.  In the **lobby**, wait for other players. The game leader (creator) can select the question set and start the game.
+3.  **To create a game:** Click "Create a Party!" and share the generated game code.
+4.  **To join a game:** Enter your nickname, choose an avatar, enter the provided game code, and click "Join The Fun!".
+5.  In the **lobby**, wait for other players. The game leader (creator) can select the question set, enable **Confession Mode**, and start the game.
 6.  During the **voting** phase, select the avatar of the player who you think best matches the displayed question.
 7.  Check the **results** to see who received the most votes.
 8.  The **coin toss** will determine if the names of voters for a specific player are revealed.
-9.  Click "Ready for the next round" to continue. The game progresses when all connected players are ready.
-10. Use the "Leave" button to disconnect from the game or lobby.
+9.  **Confession Time!** If enabled, this surprise round may trigger. The most-voted player from the previous round gets to pick who answers a juicy question. The target must answer, and everyone else judges if they are convinced.
+10. Click "Ready for the next round" to continue. The game progresses when all connected players are ready.
+11. Use the "Bail Out!" button to disconnect from the game or lobby. The leader can end the game for everyone.
+12. Once the game is over, check out the **results page** for a full breakdown of the game's chaos!
 
 ## 📄 License
 

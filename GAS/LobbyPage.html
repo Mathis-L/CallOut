@@ -5,6 +5,7 @@
     <title>Lobby - Call Out Game</title>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -232,6 +233,97 @@
         margin-top: 5px; text-align: center; font-weight: 500; height: 1.2em;
       }
 
+     /* --- Container --- */
+      #confession-mode-option {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          padding: 12px 15px;
+          background-color: var(--clr-input-bg);
+          border-radius: var(--radius-button);
+          border: var(--border-strong);
+          margin-top: 15px;
+          cursor: pointer;
+          transition: all 0.25s ease;
+          -webkit-user-select: none;
+          -moz-user-select: none;
+          -ms-user-select: none;
+          user-select: none;
+      }
+      #confession-mode-option:hover {
+          border-color: var(--clr-accent-teal);
+          background-color: color-mix(in srgb, var(--clr-accent-teal) 15%, white);
+          box-shadow: 0 4px 10px rgba(0,0,0,0.05);
+      }
+
+      /* --- Label Text --- */
+      #confession-mode-option .confession-label-text {
+          font-weight: 600;
+          font-size: 1rem;
+          color: var(--clr-text-dark);
+          transition: color 0.25s ease;
+      }
+
+      /* --- Switch Base --- */
+      .switch {
+          position: relative;
+          display: inline-block;
+          width: 56px;
+          height: 30px;
+      }
+
+      /* Hide default checkbox */
+      .switch input {
+          opacity: 0;
+          width: 0;
+          height: 0;
+      }
+
+      /* --- Slider Track --- */
+      .slider {
+          position: absolute;
+          cursor: pointer;
+          inset: 0;
+          background: var(--clr-disabled-bg);
+          border-radius: 30px;
+          border: 2px solid var(--clr-primary-purple);
+          transition: background 0.35s ease, box-shadow 0.35s ease;
+      }
+
+      /* --- Slider Knob --- */
+      .slider:before {
+          content: "";
+          position: absolute;
+          height: 22px;
+          width: 22px;
+          left: 2px;
+          bottom: 2px;
+          background-color: white;
+          border-radius: 50%;
+          transition: transform 0.35s cubic-bezier(0.68, -0.55, 0.27, 1.55), 
+                      background-color 0.35s ease;
+          box-shadow: 0 2px 5px rgba(0,0,0,0.15);
+      }
+
+      /* --- Active State --- */
+      input:checked + .slider {
+          background: linear-gradient(135deg, var(--clr-accent-teal), var(--clr-success));
+          border-color: var(--clr-success);
+          box-shadow: 0 0 8px rgba(93,192,166,0.6);
+      }
+      input:checked + .slider:before {
+          transform: translateX(26px) scale(1.1);
+          background-color: #fff;
+      }
+
+      /* --- Disabled State --- */
+      input:disabled + .slider {
+          background-color: #ccc;
+          cursor: not-allowed;
+          box-shadow: none;
+      }
+
+
       /* Loader simple */
       .loader-container { display: flex; justify-content: center; align-items: center; padding: 20px; }
       .loader { 
@@ -331,6 +423,14 @@
                         <span class="radio-label-text">🔥 Extra Hot!</span>
                     </label>
                 </div>
+               <label id="confession-mode-option" class="option-switch-container">
+                    <!-- Le texte est dans un span pour le stylage -->
+                    <span class="confession-label-text">😱 Enable Confession Mode?</span>
+                    <div class="switch">
+                        <input type="checkbox" id="confessionModeToggle">
+                        <span class="slider round"></span>
+                    </div>
+                </label>
                 <span id="question-set-status"></span>
             </div>
 
@@ -361,7 +461,7 @@
         const currentUserPseudo = "<?!= pseudo ?>";
 
         // --- Firebase References ---
-        let firebaseApp, database, gameRef, playersRef, currentPlayerRef;
+        let firebaseApp, database, auth, gameRef, playersRef, currentPlayerRef;
 
         // --- DOM Element ---
         const gameCodeDisplay = document.getElementById('gameCodeDisplay');
@@ -435,23 +535,23 @@
             messageAreaLobby.insertBefore(alertContainer, messageAreaLobby.firstChild);
         }
 
-         /**
+        /**
          * Initializes the Firebase application and sets up database references for the lobby.
-         * @returns {boolean} True if initialization is successful, false otherwise.
-         * If initialization fails, it displays a "lobby closed" message with the error.
+         * **MODIFIED**: Now also initializes the auth service.
          */
         function initializeFirebase() {
             try {
                 if (!firebase.apps.length) { firebaseApp = firebase.initializeApp(firebaseConfig); }
                 else { firebaseApp = firebase.app(); }
                 database = firebase.database();
+                auth = firebase.auth(); // Initialize Auth service
                 gameRef = database.ref(`lobbies/${gameId}`);
                 playersRef = database.ref(`lobbies/${gameId}/players`);
                 currentPlayerRef = database.ref(`lobbies/${gameId}/players/${currentUserId}`);
-                console.log("Firebase initialisé (Lobby):", gameId);
+                console.log("Firebase initialized (Lobby):", gameId);
                 return true;
             } catch (error) {
-                console.error("Erreur init Firebase (Lobby):", error);
+                console.error("Firebase init error (Lobby):", error);
                 showLobbyClosed(`Critical Firebase error! 🚨 Something went wrong: ${error.message}`);
                 return false;
             }
@@ -798,10 +898,12 @@
                 if (isLeader && currentStatus === 'waiting') { // Afficher seulement si leader et en attente
                     leaderControlsDiv.style.display = 'block';
                     startGameBtn.style.display = 'block'; 
+                    document.getElementById('confessionModeToggle').disabled = false;
                     if (!afkCheckInterval) startAfkCheck();
                 } else {
                     leaderControlsDiv.style.display = 'none';
                     startGameBtn.style.display = 'none'; 
+                    document.getElementById('confessionModeToggle').disabled = true;
                     if (afkCheckInterval) { clearInterval(afkCheckInterval); afkCheckInterval = null; } 
                 }
                 
@@ -878,48 +980,63 @@
             lobbyClosedPromptDiv.style.display = 'block';
         }
 
+         /**
+         * This function now contains the logic that should ONLY run AFTER we confirm the user is authenticated.
+         */
+        function startLobbyExperience() {
+            // Now that we are here, we know auth.uid is available to the security rules.
+            console.log("Authentication confirmed. Starting lobby experience...");
+            attachFirebaseListeners();
+            startHeartbeat();
+        }
 
          // --- Initialisation au chargement ---
-        /**
-         * Event listener for the 'DOMContentLoaded' event.
-         * This is the main entry point for the lobby page script.
-         * It performs the following actions:
-         * 1. Displays the game ID.
-         * 2. Shows a loader and disables interactive buttons.
-         * 3. Fetches the web application's base URL (`fetchWebAppUrl`).
-         * 4. If the base URL is obtained:
-         *    a. Initializes Firebase (`initializeFirebase`).
-         *    b. If Firebase initializes successfully:
-         *       i. Attaches Firebase listeners (`attachFirebaseListeners`).
-         *       ii. Starts the heartbeat mechanism (`startHeartbeat`).
-         *       iii. Sets up initial `onDisconnect` logic (`handleOnDisconnectLogic`).
-         * 5. If the base URL cannot be fetched, shows a critical error prompt.
-         * 6. Attaches an event listener to the question set options for the leader to change game settings.
-         * 7. Attaches an event listener to the "Start Game" button for the leader.
-         * 8. Attaches an event listener to the "Leave Lobby" button.
-         */
-        document.addEventListener('DOMContentLoaded', async () => {
-            gameCodeDisplay.textContent = gameId;
-            loaderArea.style.display = 'block';
-            // Désactiver boutons initialement
-            startGameBtn.disabled = true;
-            leaveBtn.disabled = true;
+         // --- Page Load & Initialization Logic (Completely Rewritten) ---
+          document.addEventListener('DOMContentLoaded', async () => {
+              gameCodeDisplay.textContent = gameId;
+              loaderArea.style.display = 'block';
+              leaveBtn.disabled = true;
+              startGameBtn.disabled = true;
+              leaderControlsDiv.style.display = 'none';
 
-            // Change URL first ***
-            await fetchWebAppUrl(); // Wait for the URL to be ready (or fail)
+             // 1. D'abord, récupérer l'URL (ne dépend pas de l'auth)
+            await fetchWebAppUrl();
 
-            // Initialise Firebase ONLY if the URL is available 
-            if (webAppBaseUrl) {
-                 if (initializeFirebase()) {
-                    attachFirebaseListeners();
-                    startHeartbeat();
-                    handleOnDisconnectLogic({}); // Config initiale onDisconnect
-                 }
-                 // leaveBtn is already activated in fetchWebAppUrl() if success
-            } else {
-                 showLobbyClosed("Critical error! 🚨 Couldn’t load the app’s initial setup!");
-                 loaderArea.style.display = 'none'; // Hide loader
+            // 2. Initialiser Firebase, y compris l'auth
+            if (!initializeFirebase()) {
+                // L'initialisation a échoué, showLobbyClosed a déjà été appelé. On arrête.
+                return;
             }
+
+            // 3. LA CORRECTION : Utiliser onAuthStateChanged pour attendre l'état d'authentification
+            auth.onAuthStateChanged(user => {
+                if (user) {
+                    // --- L'UTILISATEUR EST CONNECTÉ ---
+                    console.log("Firebase Auth state confirmed for user:", user.uid);
+                    
+                    // **Vérification de sécurité cruciale :**
+                    // L'UID de l'utilisateur authentifié correspond-il à celui de l'URL ?
+                    if (user.uid === currentUserId) {
+                        // Tout est en ordre ! On lance l'expérience du lobby.
+                        startLobbyExperience();
+                    } else {
+                        // Problème de sécurité majeur ! L'utilisateur est connecté en tant que qqn d'autre.
+                        console.error("Security Mismatch: Auth UID does not match URL userId. Redirecting home.");
+                        showLobbyClosed(
+                            "Session mismatch! For your security, you've been disconnected.",
+                            getHomeUrl(null, "Session error. Please try joining again.")
+                        );
+                    }
+                } else {
+                    // --- AUCUN UTILISATEUR CONNECTÉ ---
+                    // Il ne devrait pas être ici.
+                    console.warn("No authenticated user found. Access denied.");
+                    showLobbyClosed(
+                        "You need to join the game from the home page to enter a lobby.",
+                        getHomeUrl(null, "Lobby access denied.")
+                    );
+                }
+            });
 
             // Event listener for changes in question set options (leader only).
             // Updates the 'selectedQuestionSet' in Firebase when the leader makes a choice.
@@ -956,7 +1073,13 @@
                 console.log("Clic leader sur 'Démarrer'.");
                 startGameBtn.disabled = true;
                 startGameBtn.textContent = "Starting... ";
-                gameRef.update({ status: 'playing' })
+
+                const confessionModeEnabled = document.getElementById('confessionModeToggle').checked;
+                console.log(`Confession Mode Enabled: ${confessionModeEnabled}`);
+
+                gameRef.update({ 
+                  status: 'playing',
+                  confessionModeEnabled: confessionModeEnabled })
                     .then(() => console.log("Statut mis à jour à 'playing'."))
                     .catch(error => {
                         console.error("Erreur lors du démarrage du jeu:", error);

@@ -21,6 +21,7 @@
     // --- Firebase References ---
     let firebaseApp;
     let database;
+    let auth;
     let gameRef;
     let playersRef;
     let currentPlayerRef;
@@ -45,11 +46,23 @@
     let popupTosserNameElement;
     let popupCoinElement;
     let popupStatusElement;
-    
+    let gameErrorPrompt;
+    let gameErrorText;
+    let gameErrorHomeLink;
+    // NOUVEAU : Références pour les nouvelles phases
+    let confessionSelectionPhaseDiv, confessionQuestionPhaseDiv, confessionResultPhaseDiv;
+    let playerConfessionTargetOptionsDiv, confessionQuestionTextSelection;
+    let confessionAnswerPrompt, confessionQuestionText, confessionJudgmentArea, confessionVerdictDisplay;
+    let judgmentConvincedBtn, judgmentNotConvincedBtn, judgmentStatus;
+    let nextRoundBtnConfession, readyStatusConfession;
+    let confessionSelectionSubtitle, confessionSelectionInstruction;
+    let confessionQuestionSubtitle, confessionJudgmentInstruction;  
+    let leaveGamePopup, leavePopupTitle, leavePopupLoader, leavePopupMessage, leavePopupActions;
     
     // --- Local State Variables ---
     let localPlayersData = {};
     let localGameState = {};
+    let localFullGameData = {}; 
     let isLeader = false;
     let leaderId = null;
     let hasVotedThisRound = false;
@@ -62,6 +75,7 @@
     let popupCloseTimerId = null; 
     let lastDisplayedTosserId = null; 
     let resultsAnimationPlayedForRound = null;
+    let confessionModeEnabled = false;
     
     
     // An object to easily access question lists by their name. In "Questions.html"
@@ -70,55 +84,183 @@
       mix: mixQuestions,
       extreme: extremeQuestions
     };
+
+    const confessionQuestionSets = {
+      gentle: gentleConfessionQuestions,
+      mix: mixConfessionQuestions,
+      extreme: extremeConfessionQuestions
+    };
     
     //  Stores the name of the active question set for this game. Default is 'mix', will be overridden by Firebase value. 
     let currentGameQuestionSet = 'mix'; // Default, will be overridden by Firebase value
-    let usedQuestionsIndices = new Set();
     
+
+
+   const HistoryLogger = {
+    /**
+     * NOUVEAU : Prépare l'objet summary pour l'historique de la partie.
+     * @param {object} fullGameData - L'objet localFullGameData contenant les métadonnées.
+     * @param {object} playersData - L'objet localPlayersData avec la liste des joueurs.
+     * @returns {object|null} Un objet formaté pour être inséré dans une mise à jour Firebase.
+     */
+    prepareSummaryLog(fullGameData, playersData) {
+        if (!fullGameData || !playersData) return null;
+
+        // On ne garde que les informations essentielles des joueurs pour le résumé.
+        const initialPlayers = {};
+        for (const [id, player] of Object.entries(playersData)) {
+            if (player.isConnected) { // Snapshot des joueurs connectés au démarrage
+                initialPlayers[id] = {
+                    pseudo: player.pseudo,
+                    avatarSrc: player.avatarSrc
+                };
+            }
+        }
+
+        const summaryLog = {
+            gameId: gameId, // Variable globale
+            leaderId: fullGameData.leaderId,
+            startTime: firebase.database.ServerValue.TIMESTAMP,
+            settings: {
+                questionSet: fullGameData.selectedQuestionSet || 'mix',
+                confessionModeEnabled: !!fullGameData.confessionModeEnabled
+            },
+            initialPlayers: initialPlayers
+        };
+
+        const path = 'history/summary';
+        const updatePayload = {};
+        updatePayload[path] = summaryLog;
+        return updatePayload;
+    },
+
+        /**
+     * MODIFIÉ : Formate les données d'un round terminé, y compris un éventuel événement de confession.
+     * @param {object} completedRoundData - L'objet localGameState du round qui vient de se terminer.
+     * @returns {object|null} Un objet formaté pour être inséré dans une mise à jour Firebase.
+     */
+    prepareRoundLog(completedRoundData) {
+        if (!completedRoundData || typeof completedRoundData.round !== 'number') return null;
+
+        const roundLog = {
+            roundNumber: completedRoundData.round,
+            question: completedRoundData.question,
+            votes: completedRoundData.votes || null,
+            results: completedRoundData.results || null,
+            coinTosses: completedRoundData.coinTosses || null,
+        };
+
+        // NOUVELLE LOGIQUE : Si le round terminé contient les résultats d'une confession, on les inclut.
+        if (completedRoundData.confessionResult && completedRoundData.confessionData) {
+            console.log(`Logging confession event for round ${completedRoundData.round}`);
+            roundLog.confessionEvent = {
+                chooserId: completedRoundData.confessionData.chooserId,
+                targetId: completedRoundData.confessionData.targetId,
+                question: completedRoundData.confessionData.question,
+                judgments: completedRoundData.confessionData.judgments || null,
+                outcome: completedRoundData.confessionResult.outcome,
+                targetBecameImmune: completedRoundData.confessionResult.outcome === 'convaincu'
+            };
+        }
+
+        const path = `history/rounds/${completedRoundData.round}`;
+        const updatePayload = {};
+        updatePayload[path] = roundLog;
+        return updatePayload;
+    }
+
+    };
+
+
+    // === Confession UI helpers ===
+    function ensureConfessionAmbient() {
+      if (!document.getElementById('confession-ambient')) {
+        const ambient = document.createElement('div');
+        ambient.id = 'confession-ambient';
+        document.body.appendChild(ambient);
+      }
+    }
+
+    function setConfessionMode(on) {
+      ensureConfessionAmbient();
+      document.body.classList.toggle('confession-mode', !!on);
+    }
+
+    function highlightChooserAndTarget() {
+      const chooser = localGameState?.confessionData?.chooserId;
+      const target  = localGameState?.confessionData?.targetId;
+      document.querySelectorAll('#player-list li').forEach(li => {
+        li.classList.remove('is-chooser', 'is-target');
+        const uid = li.dataset.userId;
+        if (!uid) return;
+        if (uid === chooser) li.classList.add('is-chooser');
+        if (uid === target)  li.classList.add('is-target');
+      });
+    }
+
+    function showVerdictStamp(outcome) {
+      const box = document.getElementById('confession-verdict-display');
+      if (!box) return;
+      const old = box.querySelector('.verdict-stamp');
+      if (old) old.remove();
+      const stamp = document.createElement('div');
+      stamp.className = 'verdict-stamp ' + (outcome === 'convaincu' ? 'approved' : 'rejected');
+      stamp.textContent = (outcome === 'convaincu') ? 'Convinced' : 'Not Convinced';
+      box.insertAdjacentElement('afterbegin', stamp); // <-- important
+    }
+
+
     // --- Utility Functions ---
     
-    /**
-     * Gets a random question from the currently active question set, avoiding repetitions.
-     * Resets used questions if all questions in the set have been used.
-     * @returns {string} A random question string, or an error message if no questions are available.
-     */
-    
-    function getRandomQuestion() {
-      // Select the correct array of questions based on the global/scope variable
-        const activeQuestions = questionSets[currentGameQuestionSet] || questionSets['mix']; // Fallback sur mix
-    
+    function getNewQuestion(usedIndices) {
+        const activeQuestions = questionSets[currentGameQuestionSet] || questionSets['mix'];
         if (!activeQuestions || activeQuestions.length === 0) {
-             console.error(`Set de questions '${currentGameQuestionSet}' vide ou introuvable!`);
-             return "Erreur: Pas de questions disponibles.";
+            console.error(`Question set '${currentGameQuestionSet}' is empty or not found!`);
+            return null;
         }
-    
-        // Logic to avoid repetitions must operate on the active set
-        if (usedQuestionsIndices.size >= activeQuestions.length) {
-            console.log(`Toutes les questions du set '${currentGameQuestionSet}' ont été utilisées. Réinitialisation.`);
-            usedQuestionsIndices.clear();
+        if (usedIndices.size >= activeQuestions.length) {
+            console.log(`All questions from set '${currentGameQuestionSet}' have been used. Resetting.`);
+            usedIndices.clear(); 
         }
-    
-        let index;
+        let newIndex;
+        let attempts = 0; 
         do {
-            index = Math.floor(Math.random() * activeQuestions.length);
-        } while (usedQuestionsIndices.has(index));
-    
-        usedQuestionsIndices.add(index);
-        return activeQuestions[index]; // Retourner la question du set actif
+            newIndex = Math.floor(Math.random() * activeQuestions.length);
+            attempts++;
+        } while (usedIndices.has(newIndex) && attempts < activeQuestions.length * 2);
+
+        if (usedIndices.has(newIndex)) {
+            console.error("Failed to find an unused question index.");
+            return null; 
+        }
+        return { question: activeQuestions[newIndex], index: newIndex };
+    }
+
+    function getNewConfessionQuestion(usedIndices) {
+        const activeConfessionQuestions = confessionQuestionSets[currentGameQuestionSet] || confessionQuestionSets['mix'];
+        if (!activeConfessionQuestions || activeConfessionQuestions.length === 0) return null;
+        if (usedIndices.size >= activeConfessionQuestions.length) {
+            console.log("Resetting used confession questions.");
+            usedIndices.clear();
+        }
+        let newIndex;
+        let attempts = 0;
+        do {
+            newIndex = Math.floor(Math.random() * activeConfessionQuestions.length);
+            attempts++;
+        } while (usedIndices.has(newIndex) && attempts < activeConfessionQuestions.length * 2);
+
+        if (usedIndices.has(newIndex)) {
+            console.error("Failed to find an unused confession question.");
+            return null;
+        }
+        return { question: activeConfessionQuestions[newIndex], index: newIndex };
     }
     
-    /**
-     * Asynchronously gets the web application's base URL.
-     * Prefers Google Apps Script URL if available, otherwise falls back to window.location.
-     * @returns {Promise<string>} A promise that resolves with the base URL.
-     */
     function getWebAppUrl() {
         return new Promise((resolve, reject) => {
             if (typeof google !== 'undefined' && google.script && google.script.run) {
-                google.script.run
-                    .withSuccessHandler(resolve)
-                    .withFailureHandler(reject)
-                    .getScriptUrl();
+                google.script.run.withSuccessHandler(resolve).withFailureHandler(reject).getScriptUrl();
             } else {
                 console.warn("Contexte GAS non disponible, utilisation de l'origine.");
                 resolve(window.location.origin + window.location.pathname);
@@ -128,32 +270,22 @@
     
     // --- FIREBASE LISTENERS & ON_DISCONNECT MANAGEMENT ---
     
-    /**
-     * Cleans up Firebase listeners and onDisconnect handlers.
-     * Also clears any active timeouts related to coin toss.
-     */
      function cleanupListenersAndDisconnect() {
         console.log("Cleanup: Annulation des listeners et de onDisconnect...");
         if (gameRef && gameStatusListener) gameRef.off('value', gameStatusListener);
         if (playersRef && playersListener) playersRef.off('value', playersListener);
         gameStatusListener = null;
         playersListener = null;
-    
         if (activeTossTimeoutId) clearTimeout(activeTossTimeoutId);
         if (popupCloseTimerId) clearTimeout(popupCloseTimerId);
         activeTossTimeoutId = null;
         popupCloseTimerId = null;
         console.log("Timeouts nettoyés.");
-    
         if (currentPlayerRef) {
             currentPlayerRef.onDisconnect().cancel().catch(err => console.warn("Erreur cancel onDisconnect:", err));
         }
     }
     
-    /**
-     * Attaches Firebase listeners for game state and player list changes.
-     * Handles scenarios where the game ends or the current player is removed.
-     */
     function attachFirebaseListeners() {
         console.log("Attachement des listeners Firebase...");
         if (!gameRef || !playersRef) {
@@ -161,8 +293,7 @@
             return;
         }
     
-        // --- Listener on global game state ---
-        gameStatusListener = gameRef.on('value', (snapshot) => {
+        gameStatusListener = gameRef.on('value', async (snapshot) => {
             console.log("Listener gameRef: Données reçues.");
             if (!snapshot.exists()) {
                 if (gameStatusListener) {
@@ -175,28 +306,56 @@
             }
     
             const gameData = snapshot.val();
-            const previousGameState = {...localGameState}; // Copie de l'état précédent
+
+            if (gameData.status === 'finished' && localGameState.phase !== 'finished') {
+                console.log("Game status is 'finished'. Displaying end-game popup.");
+                cleanupListenersAndDisconnect();
+
+                // Afficher le popup de fin de partie
+                leavePopupTitle.textContent = "Game Over!";
+                leavePopupMessage.textContent = "The game has been ended by the host. You can view the final results.";
+                leavePopupLoader.style.display = 'none';
+                leavePopupActions.innerHTML = '';
+                leaveGamePopup.classList.add('visible');
+
+                try {
+                    const baseUrl = await getWebAppUrl();
+                    const resultsLink = document.createElement('a');
+                    resultsLink.href = `${baseUrl}?page=results&gameId=${gameId}`;
+                    resultsLink.textContent = "View Final Results";
+                    resultsLink.className = "button-like-link";
+                    resultsLink.style.backgroundColor = 'var(--clr-primary-green)';
+                    resultsLink.onclick = (e) => { e.preventDefault(); window.top.location.href = resultsLink.href; };
+                    
+                    leavePopupActions.appendChild(resultsLink);
+                    leavePopupActions.style.display = 'flex';
+                    leavePopupActions.style.flexDirection = 'column';
+
+                } catch(e) {
+                    leavePopupMessage.textContent += " Could not generate results link.";
+                }
+                
+                // On met à jour l'état local pour ne pas réafficher le popup en boucle
+                localGameState.phase = 'finished'; 
+                return; // On arrête le traitement normal car la partie est finie
+            }
+
+            localFullGameData = gameData;
+            const previousGameState = {...localGameState}; 
             localGameState = gameData.currentGame || {};
             leaderId = gameData.leaderId;
             isLeader = (currentUserId === leaderId);
-    
             currentGameQuestionSet = gameData.selectedQuestionSet || 'mix';
-            console.log(`Utilisation du set de questions: ${currentGameQuestionSet}`);
-    
             console.log(`Phase=${localGameState.phase}, Leader=${leaderId}, ActiveToss?`, !!localGameState.activeToss);
-    
-            updateGameUIAndState(previousGameState); // Passer l'état précédent
-    
+            updateGameUIAndState(previousGameState); 
         }, (error) => {
             console.error("Erreur listener gameRef:", error);
             alert("Game server connection error!");
         });
     
-        // --- Listener on player list ---
         playersListener = playersRef.on('value', (snapshot) => {
             console.log("Listener playersRef: Données reçues.");
             localPlayersData = snapshot.exists() ? snapshot.val() : {};
-    
             if (!localPlayersData[currentUserId] && playersListener) {
                  console.log("Joueur actuel retiré.");
                  alert("You’ve been removed from the game!");
@@ -204,9 +363,7 @@
                  getWebAppUrl().then(baseUrl => window.top.location.href = `${baseUrl}?page=home&message=${encodeURIComponent(`You’ve been removed from ${gameId}! See ya!`)}`).catch(() => window.top.location.href = window.location.origin);
                  return;
             }
-    
-            updateGameUIAndState(); // Simple update without previous state
-    
+            updateGameUIAndState(); 
         }, (error) => {
             console.error("Erreur listener playersRef:", error);
             alert("Player list connection failed! ");
@@ -216,31 +373,22 @@
     
     // --- UI Functions ---
     
-    /**
-     * Updates the player list UI based on `localPlayersData`.
-     * Displays player names, avatars, connection status, leader status, and self-highlighting.
-     * Also shows a status indicator (e.g., if they've voted or are ready).
-     */
      function updatePlayerListUI() {
         if (!playerListElement) return;
         playerListElement.innerHTML = '';
-    
         if (!localPlayersData || Object.keys(localPlayersData).length === 0) {
             playerListElement.innerHTML = '<li class="loading">No players... yet!</li>';
             return;
         }
-    
         const phase = localGameState?.phase;
         const votes = localGameState?.votes || {};
         const readyForNext = localGameState?.readyForNextRound || {};
-    
+        const judgments = localGameState.confessionData?.judgments || {};
+
         Object.entries(localPlayersData).forEach(([id, player]) => {
             const li = document.createElement('li');
-            
             li.dataset.userId = id;
             const isConnected = player.isConnected === true;
-    
-             // Add Avatar Image
              if (player.avatarSrc) {
                  const img = document.createElement('img');
                  img.src = player.avatarSrc;
@@ -248,12 +396,10 @@
                  img.classList.add('player-avatar');
                  li.appendChild(img);
              }
-    
             const nameSpan = document.createElement('span');
             nameSpan.classList.add('player-name-list');
             nameSpan.textContent = player.pseudo || 'Anonyme';
-            li.appendChild(nameSpan); // Append name after avatar
-    
+            li.appendChild(nameSpan); 
             if (!isConnected) li.classList.add('disconnected');
             if (id === leaderId) li.classList.add('is-leader');
             if (id === currentUserId) li.classList.add('is-self');
@@ -263,43 +409,30 @@
             if (isConnected) {
                 let isPlayerReadyOrVoted = false;
                 if (phase === 'voting' && votes[id]) isPlayerReadyOrVoted = true;
-                else if (phase === 'results' && readyForNext[id]) isPlayerReadyOrVoted = true;
+                else if ((phase === 'results' || phase === 'confession_result') && readyForNext[id]) isPlayerReadyOrVoted = true;
+                else if (phase === 'confession_question' && judgments[id]) isPlayerReadyOrVoted = true;
                 if (isPlayerReadyOrVoted) statusIndicator.classList.add('ready');
             }
             li.appendChild(statusIndicator);
             playerListElement.appendChild(li);
         });
+        if (leaveGameBtn) leaveGameBtn.textContent = isLeader ? "Finish Game" : "Bail Out!";
+        highlightChooserAndTarget();
     }
     
-    /**
-     * Shows the specified game phase UI and hides others.
-     * Manages visibility of voting, results, and waiting areas.
-     * Also handles the display of the pause message.
-     * @param {string} phaseToShow - The name of the phase to display (e.g., 'voting', 'results', 'waiting').
-     */
     function showPhase(phaseToShow) {
         console.log("Affichage de la phase:", phaseToShow);
-        const phases = [votingPhaseDiv, resultsPhaseDiv, waitingAreaDiv]; // Put all phase divs here
-    
+         const phases = [
+            votingPhaseDiv, resultsPhaseDiv, waitingAreaDiv, 
+            confessionSelectionPhaseDiv, confessionQuestionPhaseDiv, confessionResultPhaseDiv
+        ];
         phases.forEach(phaseDiv => {
             if (phaseDiv) {
-                const targetId = `${phaseToShow}-phase`; // ou -area pour waiting
-                const isTargetPhase = phaseDiv.id === targetId || (phaseToShow === 'waiting' && phaseDiv.id === 'waiting-area');
-    
-                if (isTargetPhase) {
-                    phaseDiv.classList.add('active');
-                } else {
-                    phaseDiv.classList.remove('active');
-                }
-            } else {
-                 console.warn("Une des divs de phase n'a pas été trouvée lors du showPhase");
+                const isTargetPhase = phaseDiv.id === `${phaseToShow}-phase` || phaseDiv.id === `${phaseToShow}-area`;
+                phaseDiv.classList.toggle('active', isTargetPhase);
             }
         });
-    
-        // Gérer le message de pause séparément
-        pauseMessageElement.style.display = localGameState.isPaused ? 'block' : 'none'; // Assumer un état isPaused
-    
-        // Si l'élément à afficher n'est pas trouvé, afficher l'attente comme fallback
+        pauseMessageElement.style.display = localGameState.isPaused ? 'block' : 'none'; 
         const elementToShow = document.getElementById(`${phaseToShow}-phase`) || document.getElementById(`${phaseToShow}-area`);
         if (!elementToShow) {
             console.warn("Phase inconnue:", phaseToShow);
@@ -308,26 +441,17 @@
         }
     }
     
-    /**
-     * Renders the UI for the voting phase.
-     * Displays the current question and voting options (other players).
-     * Disables voting if the current player has already voted.
-     * Updates vote status message.
-     */
     function renderVotingPhase() {
         currentQuestionElement.textContent = localGameState.question || "Loading...";
         playerVoteOptionsDiv.innerHTML = '';
         hasVotedThisRound = !!(localGameState.votes && localGameState.votes[currentUserId]);
         const myVoteTargetId = localGameState.votes?.[currentUserId];
-    
         Object.entries(localPlayersData).forEach(([id, player]) => {
              if (id === currentUserId) return;
             const isTargetConnected = player.isConnected === true;
             const btn = document.createElement('button');
             btn.classList.add('player-vote-btn');
             btn.dataset.targetUserId = id;
-    
-            // Add Avatar Image 
             if (player.avatarSrc) {
                 const img = document.createElement('img');
                 img.src = player.avatarSrc;
@@ -335,22 +459,19 @@
                 img.classList.add('player-avatar');
                 btn.appendChild(img);
             }
-    
-            const nameSpan = document.createElement('span'); // Wrap name
+            const nameSpan = document.createElement('span'); 
             nameSpan.classList.add('player-name-vote');
             nameSpan.textContent = player.pseudo || 'Anonyme';
             if (!isTargetConnected) {
                btn.classList.add('target-disconnected');
-               nameSpan.textContent += " (Offline)"; // Add status to name span
+               nameSpan.textContent += " (Offline)"; 
             }
-            btn.appendChild(nameSpan); // Append name after avatar
-    
+            btn.appendChild(nameSpan); 
             btn.disabled = hasVotedThisRound;
             if (hasVotedThisRound && myVoteTargetId === id) { btn.classList.add('voted-for'); }
             btn.addEventListener('click', handleVoteClick);
             playerVoteOptionsDiv.appendChild(btn);
         });
-    
         const votes = localGameState.votes || {};
         const connectedVotesCount = Object.keys(votes).filter(id => localPlayersData[id]?.isConnected).length;
         if (hasVotedThisRound) {
@@ -362,13 +483,6 @@
         }
     }
     
-    /**
-     * Renders the UI for the results phase.
-     * Displays vote counts for each player, vote bars, and coin toss sections.
-     * Handles animation for result items on first appearance for the round.
-     * Shows revealed votes if applicable after a coin toss.
-     * Manages the "Ready for next round" button and status.
-     */
     function renderResultsPhase() {
         resultsDisplayDiv.innerHTML = '';
         const results = localGameState.results || {};
@@ -376,53 +490,39 @@
         const coinTossesData = localGameState.coinTosses || {};
         const activeToss = localGameState.activeToss;
         isReadyForNext = !!readyForNext[currentUserId];
-    
-    
-        const currentRound = localGameState.round; // Récupérer le numéro de la manche actuelle
+        const currentRound = localGameState.round; 
         const playAnimation = resultsAnimationPlayedForRound !== currentRound;
-    
         if (playAnimation) {
             console.log(`Première apparition des résultats pour la manche ${currentRound}. Animation !`);
-            resultsAnimationPlayedForRound = currentRound; // Marquer comme jouée pour cette manche
+            resultsAnimationPlayedForRound = currentRound; 
         }
-    
         if (Object.keys(results).length === 0) {
             resultsDisplayDiv.innerHTML = '<p>No votes recorded...</p>';
             if (playAnimation) resultsAnimationPlayedForRound = currentRound;
         } else {
             const sortedResults = Object.entries(results).sort(([, a], [, b]) => b - a);
             let maxVotes = 0;
-            sortedResults.forEach(([, count]) => {
-                if (count > maxVotes) {
-                    maxVotes = count;
-                }
-            });
+            sortedResults.forEach(([, count]) => { if (count > maxVotes) maxVotes = count; });
             const voteScale = maxVotes > 0 ? maxVotes : 1;
-            const animationDelayIncrement = 1000; // ms entre chaque apparition
-    
+            const animationDelayIncrement = 1000; 
             sortedResults.forEach(([playerId, count], index) => {
                 const player = localPlayersData[playerId];
                 if (!player) return;
-    
                 const resultItemDiv = document.createElement('div');
                 resultItemDiv.className = 'result-item';
                 resultItemDiv.dataset.playerId = playerId;
                 if (!player.isConnected) resultItemDiv.classList.add('disconnected-result');
-    
-                // Score
-                 const scoreDiv = document.createElement('div');
+                const scoreDiv = document.createElement('div');
                 scoreDiv.className = 'result-score';
-    
                 const scorePlayer = document.createElement('div');
                 scorePlayer.className = 'result-score-player';
-    
                 if (player.avatarSrc) {
                   const img = document.createElement('img');
                   img.src = player.avatarSrc;
                   img.alt = "Avatar";
                   img.classList.add('player-avatar');
-                  scorePlayer.appendChild(img); // Add image first in score div
-              }
+                  scorePlayer.appendChild(img); 
+                }
                 const nameSpan = document.createElement('span');
                 nameSpan.className = 'player-name-result';
                 nameSpan.textContent = player.pseudo || 'Inconnu';
@@ -434,24 +534,18 @@
                 scoreDiv.appendChild(scorePlayer);
                 scoreDiv.appendChild(countStrong);
                 resultItemDiv.appendChild(scoreDiv);
-    
-                // Barre de vote
                 const voteBarContainer = document.createElement('div');
                 voteBarContainer.className = 'vote-bar-container';
                 const voteBarFill = document.createElement('div');
                 voteBarFill.className = 'vote-bar-fill';
                 const barWidthPercentage = (count / voteScale) * 100;
-    
                 voteBarContainer.appendChild(voteBarFill);
                 resultItemDiv.appendChild(voteBarContainer);
-    
-                // Toss Section
                 if (count > 0) {
                     const tossSectionDiv = document.createElement('div'); tossSectionDiv.className = 'coin-toss-section';
                     const statusSpan = document.createElement('span'); statusSpan.className = 'coin-toss-status';
                     const tossData = coinTossesData[playerId];
                     let canToss = (currentUserId === playerId && !tossData && !activeToss);
-    
                     if (tossData) {
                         statusSpan.textContent = `Results : ${tossData.result === 'HEADS' ? 'HEADS !' : 'TAILS !'}`;
                     } else if (activeToss) {
@@ -460,14 +554,11 @@
                         statusSpan.textContent = (currentUserId === playerId) ? "Ready to toss?" : "Waiting for the toss...";
                     }
                     tossSectionDiv.appendChild(statusSpan);
-    
                     if (canToss) {
                         const tossBtn = document.createElement('button'); tossBtn.className = 'toss-trigger-button'; tossBtn.dataset.targetPlayerId = playerId; tossBtn.textContent = 'Toss the coin!';
                         tossSectionDiv.appendChild(tossBtn);
                     }
                     resultItemDiv.appendChild(tossSectionDiv);
-    
-                    // Revealed Votes
                     if (tossData && tossData.revealVotes) {
                         const revealedDiv = document.createElement('div'); revealedDiv.className = 'revealed-votes';
                         const ul = document.createElement('ul'); const votes = localGameState.votes || {}; let revealedCount = 0;
@@ -489,28 +580,18 @@
                 }
                 resultsDisplayDiv.appendChild(resultItemDiv);
                 if (playAnimation) {
-                    // Cas 1: Première apparition -> Animation
-                    // L'item est créé avec opacity 0 par CSS par défaut
                     const currentDelay = index * animationDelayIncrement;
                     setTimeout(() => {
-                        resultItemDiv.classList.add('appear'); // Déclenche l'animation d'apparition
-                        // Animer la barre de vote peu après
-                        setTimeout(() => {
-                            voteBarFill.style.width = `${barWidthPercentage}%`;
-                        }, 100);
+                        resultItemDiv.classList.add('appear'); 
+                        setTimeout(() => { voteBarFill.style.width = `${barWidthPercentage}%`; }, 100);
                     }, currentDelay);
                 } else {
-                    // Cas 2: Mise à jour -> Affichage immédiat sans animation
-                    // On force l'état visible immédiatement
                     resultItemDiv.style.opacity = 1;
                     resultItemDiv.style.transform = 'translateY(0)';
-                    // Appliquer la largeur de la barre directement (la transition CSS sur la barre jouera si la largeur change)
                     voteBarFill.style.width = `${barWidthPercentage}%`;
                 }
             });
         }
-    
-        // Ready Button
         nextRoundBtn.disabled = isReadyForNext;
         nextRoundBtn.textContent = isReadyForNext ? "Ready!" : "Ready for the next round!";
         nextRoundBtn.classList.toggle('ready', isReadyForNext);
@@ -520,15 +601,8 @@
     
     // --- Coin Toss Popup Functions ---
     
-    /**
-     * Displays the coin toss popup, starts the animation, and sets a timer for automatic closing.
-     * Shows the tosser's avatar and name.
-     * @param {string} tosserId The ID of the player tossing the coin.
-     * @param {string} tosserPseudo The pseudo of the player tossing the coin.
-     */
     function showCoinTossPopup(tosserId, tosserPseudo) {
         if (!coinTossPopup || isPopupVisible) {
-            // Si déjà visible, peut-être mettre à jour le nom si c'est un autre lanceur ? Rare.
             if (isPopupVisible && lastDisplayedTosserId !== tosserId) {
                  popupTosserNameElement.innerHTML = `<strong>${tosserPseudo}</strong> toss the coin... `;
                  lastDisplayedTosserId = tosserId;
@@ -536,52 +610,39 @@
             return;
         }
         console.log(`Affichage popup pour ${tosserPseudo} (ID: ${tosserId})`);
-        lastDisplayedTosserId = tosserId; // Stocker qui est affiché
-    
-        // --- NEW: Display Avatar in Popup ---
-        popupTosserNameElement.innerHTML = ''; // Clear previous content
+        lastDisplayedTosserId = tosserId; 
+        popupTosserNameElement.innerHTML = ''; 
         const tosserData = localPlayersData[tosserId];
         if (tosserData && tosserData.avatarSrc) {
             const img = document.createElement('img');
             img.src = tosserData.avatarSrc;
             img.alt = "Avatar";
-            img.classList.add('player-avatar-popup'); // Use specific class
+            img.classList.add('player-avatar-popup'); 
             popupTosserNameElement.appendChild(img);
         }
-        const nameText = document.createElement('span'); // Add name text separately
+        const nameText = document.createElement('span'); 
         nameText.innerHTML = `<strong>${tosserPseudo}</strong> toss the coin...`;
         popupTosserNameElement.appendChild(nameText);
-        // ----------------------------------
         popupStatusElement.textContent = "Tossing...";
-        popupCoinElement.style.transform = 'rotateX(45deg)'; // Reset position
+        popupCoinElement.style.transform = 'rotateX(45deg)'; 
         popupCoinElement.style.display = 'block';
         popupCoinElement.classList.remove('animate');
-        void popupCoinElement.offsetWidth; // Force reflow
+        void popupCoinElement.offsetWidth; 
         popupCoinElement.classList.add('animate');
         coinTossPopup.classList.add('visible');
         isPopupVisible = true;
-    
-        // Planifier la fermeture automatique
-        clearTimeout(popupCloseTimerId); // Annuler ancien timer si existant
+        clearTimeout(popupCloseTimerId); 
         popupCloseTimerId = setTimeout(hideCoinTossPopup, COIN_TOSS_ANIMATION_DURATION + POPUP_CLOSE_DELAY);
-        console.log(`Popup se fermera dans ${COIN_TOSS_ANIMATION_DURATION + POPUP_CLOSE_DELAY}ms`);
     }
     
-    /**
-     * Hides the coin toss popup.
-     * Clears associated timers and resets state.
-     */
     function hideCoinTossPopup() {
         if (!isPopupVisible) return;
         console.log("Fermeture popup lancer.");
-    
-        clearTimeout(popupCloseTimerId); // Annuler le timer
+        clearTimeout(popupCloseTimerId); 
         popupCloseTimerId = null;
-        lastDisplayedTosserId = null; // Oublier qui était affiché
-    
+        lastDisplayedTosserId = null; 
         popupCoinElement.classList.remove('animate');
         coinTossPopup.classList.remove('visible');
-        // Délai pour transition CSS avant de cacher complètement
         setTimeout(() => {
             if (!coinTossPopup.classList.contains('visible')) {
                  popupCoinElement.style.display = 'none';
@@ -590,19 +651,11 @@
         isPopupVisible = false;
     }
     
-    /**
-     * Updates the content of the popup to display the final coin toss result.
-     * Stops the animation and fixes the coin on Heads or Tails.
-     * @param {string} resultText The text of the result (e.g., "Result: TAILS!").
-     * @param {('HEADS'|'TAILS')} result - The actual result ('HEADS' or 'TAILS').
-     */
     function updatePopupWithFinalResult(resultText, result) {
         if (isPopupVisible) {
             console.log(`Popup: Affichage résultat final: ${resultText}`);
             popupStatusElement.textContent = resultText;
-            popupCoinElement.classList.remove('animate'); // Stopper l'animation CSS
-    
-            // Forcer la position finale immédiatement
+            popupCoinElement.classList.remove('animate'); 
             const finalRotation = result === 'HEADS' ? 'rotateX(45deg)' : 'rotateX(225deg)';
             popupCoinElement.style.transform = finalRotation;
         } else {
@@ -610,200 +663,215 @@
         }
     }
     
-    
     // --- User Event Handlers ---
     
-    /**
-     * Handles voluntary leaving of the game by the current user.
-     * If the leader leaves, the game is removed from Firebase.
-     * Otherwise, only the player is removed. Redirects to home page.
-     * @async
-     */
-    async function leaveGameVoluntarily() { 
-        const iAmLeader = (currentUserId === leaderId);
-        console.log(`Clic sur 'Quitter'. ${iAmLeader ? "Leader." : "Joueur."}`);
-        leaveGameBtn.disabled = true;
-        leaveGameBtn.textContent = "Disconnecting...";
-    
-        cleanupListenersAndDisconnect(); // Nettoyer d'abord
-    
-        try {
-            let redirectMessage = `You’ve left game ${gameId}! 👋 See you next time!`;
-            if (iAmLeader) {
-                console.log("Leader quitte. Suppression partie...");
-                if (gameRef) {
-                    await gameRef.remove();
-                    redirectMessage = `Game ${gameId} is over (leader left)!`;
-                }
-            } else {
-                console.log("Joueur quitte.");
-                if (currentPlayerRef) {
-                    await currentPlayerRef.remove();
-                }
+   async function leaveGameVoluntarily() { 
+    const iAmLeader = (currentUserId === leaderId);
+    leaveGameBtn.disabled = true;
+
+    // AFFICHER LE POPUP DE CONFIRMATION
+    leavePopupLoader.style.display = 'none';
+    leavePopupActions.style.display = 'flex';
+    leavePopupActions.style.flexDirection = 'column';
+    leavePopupActions.innerHTML = ''; // Toujours vider les actions précédentes
+    leaveGamePopup.classList.add('visible');
+
+    // DÉFINIR LE BOUTON D'ANNULATION COMMUN
+    const cancelBtn = document.createElement('button');
+    cancelBtn.textContent = "Cancel";
+    cancelBtn.style.backgroundColor = 'var(--clr-disabled-bg)';
+    cancelBtn.style.color = 'var(--clr-text-dark)';
+    cancelBtn.style.marginTop = '10px';
+    cancelBtn.onclick = () => {
+        leaveGamePopup.classList.remove('visible');
+        leaveGameBtn.disabled = false; // Réactiver le bouton principal
+    };
+
+    if (iAmLeader) {
+        // --- ÉTAPE DE CONFIRMATION POUR LE LEADER ---
+        leavePopupTitle.textContent = "Finish Game?";
+        leavePopupMessage.textContent = "Are you sure you want to end the game for everyone?";
+
+        const confirmBtn = document.createElement('button');
+        confirmBtn.textContent = "Yes, End It";
+        confirmBtn.style.backgroundColor = 'var(--clr-error)';
+        
+        confirmBtn.onclick = async () => {
+            // Afficher un état de chargement
+            leavePopupMessage.textContent = "Ending the game, please wait...";
+            leavePopupActions.style.display = 'none';
+            leavePopupLoader.style.display = 'block';
+
+            cleanupListenersAndDisconnect();
+            
+            try {
+                const baseUrl = await getWebAppUrl();
+                await gameRef.update({ 
+                    status: 'finished',
+                    endTime: firebase.database.ServerValue.TIMESTAMP 
+                });
+
+                // Afficher le résultat final
+                leavePopupTitle.textContent = "Game Ended";
+                leavePopupMessage.textContent = "The game has been successfully ended. You can now view the final results.";
+                leavePopupLoader.style.display = 'none';
+                
+                const resultsLink = document.createElement('a');
+                resultsLink.href = `${baseUrl}?page=results&gameId=${gameId}`;
+                resultsLink.textContent = "View Final Results";
+                resultsLink.className = "button-like-link";
+                resultsLink.style.backgroundColor = 'var(--clr-primary-green)';
+                resultsLink.onclick = (e) => { e.preventDefault(); window.top.location.href = resultsLink.href; };
+
+                leavePopupActions.innerHTML = '';
+                leavePopupActions.appendChild(resultsLink);
+                leavePopupActions.style.display = 'flex';
+
+            } catch (error) {
+                console.error("Error ending game:", error);
+                leavePopupTitle.textContent = "Error!";
+                leavePopupMessage.textContent = `An error occurred: ${error.message}.`;
+                leavePopupLoader.style.display = 'none';
             }
-            const baseUrl = await getWebAppUrl();
-            window.top.location.href = `${baseUrl}?page=home&message=${encodeURIComponent(redirectMessage)}`;
-        } catch (error) {
-            console.error("Erreur en quittant:", error);
-            alert("Error leaving the game!");
-            leaveGameBtn.disabled = false; // Réactiver si erreur
-            leaveGameBtn.textContent = "Leave Game";
-             // Tentative de redirection même si erreur DB
-             try {
-                 const baseUrl = await getWebAppUrl();
-                 window.top.location.href = `${baseUrl}?page=home&error=${encodeURIComponent("Error leaving the game!")}`;
-             } catch(e){ window.top.location.href = window.location.origin; }
-        }
-     }
+        };
+
+        leavePopupActions.appendChild(confirmBtn);
+        leavePopupActions.appendChild(cancelBtn);
     
-     /**
-     * Handles the click event on a player vote button.
-     * Records the vote in Firebase. Disables buttons to prevent multiple votes.
-     * @param {Event} event - The click event object.
-     */
+    } else {
+        // --- NOUVELLE ÉTAPE DE CONFIRMATION POUR LES JOUEURS ---
+        leavePopupTitle.textContent = "Leave Game?";
+        leavePopupMessage.textContent = "Are you sure you want to bail out? You won't be able to rejoin this game.";
+
+        const confirmBtn = document.createElement('button');
+        confirmBtn.textContent = "Yes, I'm Out";
+        confirmBtn.style.backgroundColor = 'var(--clr-error)';
+
+        confirmBtn.onclick = async () => {
+            // Afficher un état de chargement
+            leavePopupMessage.textContent = "Processing your request...";
+            leavePopupActions.style.display = 'none';
+            leavePopupLoader.style.display = 'block';
+
+            cleanupListenersAndDisconnect();
+            
+            try {
+                const baseUrl = await getWebAppUrl();
+                if (currentPlayerRef) await currentPlayerRef.remove();
+                
+                leavePopupTitle.textContent = "You've Left!";
+                leavePopupMessage.textContent = "You have successfully left the game.";
+                leavePopupLoader.style.display = 'none';
+
+                const homeLink = document.createElement('a');
+                homeLink.href = `${baseUrl}?page=home&message=${encodeURIComponent(`You’ve left game ${gameId}!`)}`;
+                homeLink.textContent = "Return to Home";
+                homeLink.className = "button-like-link";
+                homeLink.style.backgroundColor = 'var(--clr-primary-green)';
+                homeLink.onclick = (e) => { e.preventDefault(); window.top.location.href = homeLink.href; };
+                
+                leavePopupActions.innerHTML = '';
+                leavePopupActions.appendChild(homeLink);
+                leavePopupActions.style.display = 'flex';
+
+            } catch (error) {
+                console.error("Error leaving the game:", error);
+                leavePopupTitle.textContent = "Error!";
+                leavePopupMessage.textContent = `An error occurred: ${error.message}. Please try returning home.`;
+                leavePopupLoader.style.display = 'none';
+
+                const homeLink = document.createElement('a');
+                homeLink.href = window.location.origin;
+                homeLink.textContent = "Return to Home";
+                homeLink.className = "button-like-link";
+                homeLink.style.backgroundColor = 'var(--clr-error)';
+                homeLink.onclick = (e) => { e.preventDefault(); window.top.location.href = homeLink.href; };
+
+                leavePopupActions.innerHTML = '';
+                leavePopupActions.appendChild(homeLink);
+                leavePopupActions.style.display = 'flex';
+            }
+        };
+        
+        leavePopupActions.appendChild(confirmBtn);
+        leavePopupActions.appendChild(cancelBtn);
+    }
+}
+    
     function handleVoteClick(event) { 
-        console.log("handleVoteClick triggered. Clicked element:", event.target); // Debug log
-        const clickedButton = event.target.closest('.player-vote-btn'); // Find the parent button
-        if (!clickedButton) {
-            console.error("Could not find parent button for click target:", event.target);
-            return; // Exit if we didn't click inside a valid button area
-        }
-         if (clickedButton.disabled) {
-             console.log("Vote ignored: Button is disabled (likely already voted).");
-             return;
-        }
-        if (hasVotedThisRound) return;
-    
-    
+        const clickedButton = event.target.closest('.player-vote-btn'); 
+        if (!clickedButton || clickedButton.disabled || hasVotedThisRound) return;
         const targetUserId = clickedButton.dataset.targetUserId;
-          console.log("Target User ID:", targetUserId);
         if (!targetUserId) return;
-    
-        console.log(`Vote pour : ${localPlayersData[targetUserId]?.pseudo || targetUserId}`);
-        // Disable all buttons immediately for visual feedback
         document.querySelectorAll('.player-vote-btn').forEach(btn => btn.disabled = true);
-        // Add 'voted-for' class to the specific button clicked
-        clickedButton.classList.add('voted-for'); // Add class to the button
-    
-       console.log(`Writing vote to Firebase: votes/${currentUserId} = ${targetUserId}`); // Debug log
+        clickedButton.classList.add('voted-for');
         gameStateRef.child('votes').child(currentUserId).set(targetUserId)
-            .then(() => {
-                 console.log("Firebase vote write SUCCESSFUL.");
-                 // No need to manually set hasVotedThisRound here,
-                 // the Firebase listener will trigger a re-render which will update it.
-            })
             .catch(error => {
                 console.error("Firebase vote write FAILED:", error);
                 alert("Oops! Error recording your vote! Please try again!");
-                // Re-enable buttons ONLY IF the write truly failed AND the state hasn't updated yet
-                // Safest might be to just let the next Firebase update fix the UI state
-                // But for immediate feedback on failure:
                  document.querySelectorAll('.player-vote-btn').forEach(btn => {
-                     // Only re-enable if the global state doesn't show we've voted
-                     const currentVotes = localGameState.votes || {};
-                     if (!currentVotes[currentUserId]) { // Check if vote wasn't registered after all
-                         btn.disabled = false;
-                     }
+                     if (!(localGameState.votes && localGameState.votes[currentUserId])) btn.disabled = false;
                  });
-                 clickedButton.classList.remove('voted-for'); // Remove visual cue on failure
+                 clickedButton.classList.remove('voted-for'); 
             });
     }
     
-    /**
-     * Handles the click on the "Ready for next round" button.
-     * Sets the player's ready status to true in Firebase.
-     */
     function handleNextRoundClick() { 
         if (isReadyForNext) return;
-        console.log("Click 'Ready for the next round'");
-        nextRoundBtn.disabled = true;
-        nextRoundBtn.textContent = "Ready !";
-        nextRoundBtn.classList.add('ready');
-    
+        const isConfessionResultPhase = localGameState.phase === 'confession_result';
+        const buttonToUpdate = isConfessionResultPhase ? nextRoundBtnConfession : nextRoundBtn;
+        buttonToUpdate.disabled = true;
+        buttonToUpdate.textContent = "Ready !";
+        buttonToUpdate.classList.add('ready');
         gameStateRef.child('readyForNextRound').child(currentUserId).set(true)
-            .then(() => console.log("Statut 'Prêt' envoyé."))
             .catch(error => {
                 console.error("Erreur envoi 'Prêt':", error);
                 alert("Error recording 'Ready' status.");
-                nextRoundBtn.disabled = false;
-                nextRoundBtn.textContent = "Ready for the next round";
-                nextRoundBtn.classList.remove('ready');
+                buttonToUpdate.disabled = false;
+                buttonToUpdate.textContent = "Ready for the next round";
+                buttonToUpdate.classList.remove('ready');
             });
     }
     
-    /**
-     * Handles the click on a "Toss" button for a coin toss.
-     * Only allows the designated player to initiate a toss.
-     * Sets an 'activeToss' signal in Firebase to coordinate the toss animation.
-     * @param {Event} event - The click event object, expected from event delegation.
-     */
     function handleCoinTossTriggerClick(event) { 
-         // Utiliser la délégation d'événements sur le conteneur resultsDisplayDiv
-         if (!event.target.matches('.toss-trigger-button')) {
-             return; // Clic ailleurs dans la zone
-         }
-    
+         if (!event.target.matches('.toss-trigger-button')) return; 
          const button = event.target;
          const targetPlayerId = button.dataset.targetPlayerId;
-    
-         console.log(`Clic sur 'Lancer' pour ${targetPlayerId}`);
-    
-         // Vérifications
-         if (currentUserId !== targetPlayerId) {
-              console.warn("Tentative de lancer pour un autre joueur.");
+         if (currentUserId !== targetPlayerId || (localGameState.coinTosses && localGameState.coinTosses[targetPlayerId]) || localGameState.activeToss) {
+              if(localGameState.activeToss) alert(`Wait for ${localGameState.activeToss.tossingPlayerPseudo}'s toss to finish...`);
               return;
          }
-         if (localGameState.coinTosses && localGameState.coinTosses[targetPlayerId]) {
-             console.warn("Lancer déjà effectué.");
-             button.disabled = true; return;
-         }
-         if (localGameState.activeToss) {
-              console.warn("Un autre lancer est déjà en cours.");
-              alert(`Wait for the end of ${localGameState.activeToss.tossingPlayerPseudo}'s throw...`);
-              // Le bouton devrait déjà être caché/désactivé par renderResultsPhase, mais sécurité
-              button.disabled = true;
-              return;
-         }
-    
-         // Désactiver le bouton immédiatement
          button.disabled = true;
          button.textContent = 'Tossing...';
-    
-         // Triggering Toss
-         console.log(`Déclenchement du lancer par ${currentUserPseudo} (ID: ${currentUserId})`);
          const tossInitiationData = {
              tossingPlayerId: currentUserId,
-             tossingPlayerPseudo: currentUserPseudo, // Envoyer le pseudo pour affichage direct
+             tossingPlayerPseudo: currentUserPseudo, 
              startTime: firebase.database.ServerValue.TIMESTAMP
          };
-    
-         // Écrire dans Firebase pour signaler le début du lancer à tous
          gameStateRef.child('activeToss').set(tossInitiationData)
-             .then(() => {
-                 console.log("Signal 'activeToss' envoyé. La popup devrait s'ouvrir pour tous.");
-             })
              .catch(error => {
-                 console.error("Erreur lors du déclenchement du lancer (écriture activeToss):", error);
-                 alert("Error during coin toss. Please try again.");
-                 // Réactiver le bouton si l'écriture échoue
-                 if(button) { // Vérifier si le bouton existe toujours
-                    button.disabled = false;
-                    button.textContent = 'Toss the coin!';
-                 }
+                 console.error("Erreur lors du déclenchement du lancer:", error);
+                 alert("Error during coin toss.");
+                 if(button) { button.disabled = false; button.textContent = 'Toss the coin!'; }
              });
+    }
+
+    function showGameErrorAndRedirect(errorMessage) {
+        console.error("Displaying critical game error:", errorMessage);
+        const playerListArea = document.getElementById('player-list-area');
+        const gameCard = document.querySelector('.game-card');
+        if (playerListArea) playerListArea.style.display = 'none';
+        if (gameCard) gameCard.style.display = 'none';
+        gameErrorText.textContent = `Oops! ${errorMessage}`;
+        gameErrorPrompt.style.display = 'block';
+        getWebAppUrl().then(baseUrl => {
+            gameErrorHomeLink.href = `${baseUrl}?page=home&error=${encodeURIComponent("Disconnected from game.")}`;
+        }).catch(() => { gameErrorHomeLink.href = window.location.origin; });
     }
     
     // --- Main Game Logic ---
     
-    /**
-     * Initializes the game page.
-     * Assigns DOM elements, initializes Firebase, sets up onDisconnect, and attaches event listeners.
-     * Shows 'waiting' phase initially.
-     */
     function initializeGame() {
-         console.log("Initialisation jeu...");
-         // Assign DOM elements
-        //  gameIdDisplay = document.getElementById('gameIdDisplay');
          playerListElement = document.getElementById('player-list');
          gameContent = document.getElementById('game-content');
          votingPhaseDiv = document.getElementById('voting-phase');
@@ -821,274 +889,560 @@
          coinTossPopup = document.getElementById('coin-toss-popup');
          popupTosserNameElement = document.getElementById('popup-tosser-name');
          popupCoinElement = document.getElementById('popup-coin');
-         popupStatusElement = document.querySelector('#coin-toss-popup .popup-status'); // Sélection plus spécifique
-    
-         if(/*!gameIdDisplay||*/  !resultsDisplayDiv || !coinTossPopup || !popupStatusElement) {
-             console.error("DOM non prêt ou éléments essentiels manquants!");
-             alert("Critical error: Unable to load the game interface.");
-             return;
-         }
-         /*gameIdDisplay.textContent = gameId;*/
-         showPhase('waiting');
-         waitingMessage.textContent = "Connexion...";
-    
-        // Initialize Firebase
-        try {
-            if (!firebase.apps.length) {
-                firebaseApp = firebase.initializeApp(firebaseConfig);
-            } else {
-                firebaseApp = firebase.app();
-            }
-            database = firebase.database();
-            gameRef = database.ref(`lobbies/${gameId}`);
-            playersRef = database.ref(`lobbies/${gameId}/players`);
-            currentPlayerRef = playersRef.child(currentUserId);
-            gameStateRef = database.ref(`lobbies/${gameId}/currentGame`);
-            console.log("Références Firebase configurées:", `lobbies/${gameId}`);
-    
-            // Marquer comme connecté et configurer onDisconnect
-            currentPlayerRef.update({ isConnected: true, lastSeen: firebase.database.ServerValue.TIMESTAMP })
-                .then(() => currentPlayerRef.onDisconnect().update({
-                    isConnected: false,
-                    disconnectedAt: firebase.database.ServerValue.TIMESTAMP
-                }))
-                .then(() => {
-                    console.log("Connecté et onDisconnect configuré.");
-                    attachFirebaseListeners(); // Attacher les listeners APRÈS connexion réussie
-                })
-                .catch(error => {
-                    console.error("Erreur connexion/onDisconnect:", error);
-                    alert("Error connecting to the game. Redirecting...");
-                    getWebAppUrl().then(baseUrl => {
-                        window.top.location.href = `${baseUrl}?page=home&error=${encodeURIComponent("Impossible to join")}`;
-                    }).catch(() => window.top.location.href = window.location.origin);
-                });
-        } catch (error) {
-            console.error("Erreur init Firebase:", error);
-            alert("Erreur critique Firebase.");
-             getWebAppUrl().then(baseUrl => {
-                window.top.location.href = `${baseUrl}?page=home&error=${encodeURIComponent("Firebase error")}`;
-            }).catch(() => window.top.location.href = window.location.origin);
-        }
-    
-        // Attacher les gestionnaires d'événements
+         popupStatusElement = document.querySelector('#coin-toss-popup .popup-status'); 
+         gameErrorPrompt = document.getElementById('game-error-prompt');
+         gameErrorText = document.getElementById('game-error-text');
+         gameErrorHomeLink = document.getElementById('game-error-home-link');
+        confessionSelectionPhaseDiv = document.getElementById('confession-selection-phase');
+        confessionQuestionPhaseDiv = document.getElementById('confession-question-phase');
+        confessionResultPhaseDiv = document.getElementById('confession-result-phase');
+        playerConfessionTargetOptionsDiv = document.getElementById('player-confession-target-options');
+        confessionQuestionTextSelection = document.getElementById('confession-question-text-selection');
+        confessionAnswerPrompt = document.getElementById('confession-answer-prompt');
+        confessionJudgmentArea = document.getElementById('confession-judgment-area');
+        confessionVerdictDisplay = document.getElementById('confession-verdict-display');
+        judgmentConvincedBtn = document.getElementById('judgment-convinced-btn');
+        judgmentNotConvincedBtn = document.getElementById('judgment-not-convinced-btn');
+        judgmentStatus = document.getElementById('judgment-status');
+        nextRoundBtnConfession = document.getElementById('next-round-btn-confession');
+        readyStatusConfession = document.getElementById('ready-status-confession');
+        confessionQuestionText = document.getElementById('confession-question-text');
+        confessionSelectionSubtitle = document.getElementById('confession-selection-subtitle');
+        confessionSelectionInstruction = document.getElementById('confession-selection-instruction');
+        confessionQuestionSubtitle = document.getElementById('confession-question-subtitle');
+        confessionJudgmentInstruction = document.getElementById('confession-judgment-instruction');
+        leaveGamePopup = document.getElementById('leave-game-popup');
+    leavePopupTitle = document.getElementById('leave-popup-title');
+    leavePopupLoader = document.getElementById('leave-popup-loader');
+    leavePopupMessage = document.getElementById('leave-popup-message');
+    leavePopupActions = document.getElementById('leave-popup-actions');
+
+
+          if(!resultsDisplayDiv) {
+              alert("Critical error: Game interface failed to load.");
+              return;
+          }
+          showPhase('waiting');
+          waitingMessage.textContent = "Connecting to game server...";
+          try {
+              if (!firebase.apps.length) firebaseApp = firebase.initializeApp(firebaseConfig);
+              else firebaseApp = firebase.app();
+              database = firebase.database();
+              auth = firebase.auth(); 
+              gameRef = database.ref(`lobbies/${gameId}`);
+              playersRef = database.ref(`lobbies/${gameId}/players`);
+              currentPlayerRef = playersRef.child(currentUserId);
+              gameStateRef = database.ref(`lobbies/${gameId}/currentGame`);
+              auth.onAuthStateChanged(user => {
+              if (user) {
+                  if (user.uid === currentUserId) {
+                      // 1. Définir le "testament" (onDisconnect) en premier.
+                      // Il s'exécutera si le navigateur est fermé ou si la déconnexion est longue.
+                      currentPlayerRef.onDisconnect().update({
+                          isConnected: false,
+                          disconnectedAt: firebase.database.ServerValue.TIMESTAMP
+                      }).catch(error => console.error("Could not set onDisconnect handler:", error));
+
+                      // 2. Écouter l'état de la connexion locale du client Firebase.
+                      const connectedRef = database.ref('.info/connected');
+                      connectedRef.on('value', (snap) => {
+                          if (snap.val() === true) {
+                              // Si on est connecté (ou qu'on vient de se reconnecter),
+                              // on force notre statut à 'true' dans la base de données.
+                              // C'est cette action qui annule l'effet de onDisconnect lors d'un bref changement de réseau.
+                              console.log("Connection active. Forcing isConnected: true.");
+                              currentPlayerRef.update({
+                                  isConnected: true,
+                                  lastSeen: firebase.database.ServerValue.TIMESTAMP
+                              });
+                          }
+                          // Pas besoin de 'else', car onDisconnect gère le passage à 'false'.
+                      });
+
+                      // 3. Attacher les listeners du jeu
+                      attachFirebaseListeners();
+
+                  } else {
+                      showGameErrorAndRedirect("Session invalid. Please rejoin from home.");
+                  }
+              } else {
+                  showGameErrorAndRedirect("Authentication expired. Please rejoin from home.");
+              }
+          });
+          } catch (error) {
+              showGameErrorAndRedirect(`Initialization failed: ${error.message}`);
+          }
         nextRoundBtn.addEventListener('click', handleNextRoundClick);
+        nextRoundBtnConfession.addEventListener('click', handleNextRoundClick);
         leaveGameBtn.addEventListener('click', leaveGameVoluntarily);
-        // Utiliser la délégation pour les boutons "Lancer" générés dynamiquement
         resultsDisplayDiv.addEventListener('click', handleCoinTossTriggerClick);
-     }
+        judgmentConvincedBtn.addEventListener('click', () => handleJudgmentClick('convaincu'));
+        judgmentNotConvincedBtn.addEventListener('click', () => handleJudgmentClick('pas convaincu'));
+    }
     
-    
-    /**
-     * Central function called after each Firebase update.
-     * Manages UI updates, game pause logic, leader actions, and coin toss popup.
-     * @param {object} [previousGameState={}] - The game state *before* this update. Used for comparisons.
-     */
     function updateGameUIAndState(previousGameState = {}) {
-        
-        if (!localPlayersData || Object.keys(localPlayersData).length === 0) return;
-    
+        if (!localPlayersData) return;
         connectedPlayersCount = Object.values(localPlayersData).filter(p => p.isConnected === true).length;
-        updatePlayerListUI(); // Toujours mettre à jour la liste
-    
+        updatePlayerListUI(); 
+        confessionModeEnabled = !!localFullGameData.confessionModeEnabled;
         const currentPhase = localGameState.phase || 'waiting_start';
         const activeToss = localGameState.activeToss;
         const previousActiveToss = previousGameState.activeToss;
         const coinTosses = localGameState.coinTosses || {};
-    
-        // Coin popup management 
-    
-        // CASE 1: A toss has just STARTED (activeToss present, previously it was absent or different tosser)
         if (activeToss && (!previousActiveToss || previousActiveToss.tossingPlayerId !== activeToss.tossingPlayerId)) {
-            showCoinTossPopup(activeToss.tossingPlayerId, activeToss.tossingPlayerPseudo || 'Un joueur');
-    
-            // TOSSER'S LOGIC: Start timer to write the result
+            showCoinTossPopup(activeToss.tossingPlayerId, activeToss.tossingPlayerPseudo || 'A player');
             if (activeToss.tossingPlayerId === currentUserId && !activeTossTimeoutId) {
-                console.log("JE suis le lanceur. Timer écriture résultat démarré.");
                 activeTossTimeoutId = setTimeout(() => {
-                    const randomOutcome = Math.random();
-                    const result = randomOutcome < 0.5 ? 'HEADS' : 'TAILS';
+                    const result = Math.random() < 0.5 ? 'HEADS' : 'TAILS';
                     const revealVotes = (result === 'HEADS');
-                    const resultText = `Result: ${result === 'HEADS' ? 'HEADS!' : 'TAILS!'}`;
-                    console.log(`Lanceur ${currentUserId}: Résultat ${result}. Ecriture DB...`);
-    
-                    // Mettre à jour popup locale IMMÉDIATEMENT (pour le lanceur)
+                    const resultText = `Result: ${result}!`;
                     updatePopupWithFinalResult(resultText, result);
-    
                     const tossResultData = { result, revealVotes, timestamp: firebase.database.ServerValue.TIMESTAMP };
-                    const updates = {};
-                    updates[`coinTosses/${currentUserId}`] = tossResultData;
-                    updates['activeToss'] = null; // !! Effacer le signal !!
-    
-                    gameStateRef.update(updates)
-                        .then(() => console.log(`Lanceur ${currentUserId}: Résultat écrit et activeToss effacé.`))
-                        .catch(error => {
-                            console.error(`Lanceur ${currentUserId}: Erreur écriture résultat/clear activeToss:`, error);
-                            gameStateRef.child('activeToss').set(null); // Tentative de nettoyage
-                        })
-                        .finally(() => activeTossTimeoutId = null);
+                    const updates = { [`coinTosses/${currentUserId}`]: tossResultData, 'activeToss': null };
+                    gameStateRef.update(updates).catch(error => { gameStateRef.child('activeToss').set(null); }).finally(() => activeTossTimeoutId = null);
                 }, WRITE_RESULT_DELAY);
             }
-        }
-        // CASE 2: A toss has just ENDED (activeToss absent or null, previously it was present)
-        else if (!activeToss && previousActiveToss && previousActiveToss.tossingPlayerId) {
+        } else if (!activeToss && previousActiveToss) {
              const finishedTosserId = previousActiveToss.tossingPlayerId;
-             console.log(`Lancer terminé pour ${finishedTosserId}. Vérification popup.`);
-             // S'assurer que la popup affiche le résultat final, même pour les spectateurs
              if (isPopupVisible && lastDisplayedTosserId === finishedTosserId) {
                  const finalTossData = coinTosses[finishedTosserId];
                  if (finalTossData) {
-                     const resultText = `Results : ${finalTossData.result === 'HEADS' ? 'HEADS !' : 'TAILS !'}`;
-                     // Met à jour la popup pour fixer la pièce sur la bonne face
-                     updatePopupWithFinalResult(resultText, finalTossData.result);
+                     updatePopupWithFinalResult(`Result: ${finalTossData.result}!`, finalTossData.result);
                  } else {
-                     console.warn(`Résultat final pour ${finishedTosserId} non trouvé dans coinTosses!`);
-                     popupStatusElement.textContent = "Finished."; // Fallback
+                     popupStatusElement.textContent = "Finished."; 
                  }
-             } else if (isPopupVisible && lastDisplayedTosserId !== finishedTosserId) {
-                 console.warn(`Popup visible mais pour ${lastDisplayedTosserId}, pas pour ${finishedTosserId} qui vient de finir.`);
-                 // Peut arriver si les événements s'enchaînent très vite, on laisse le timer fermer la popup actuelle.
              }
-             // Le timer de fermeture (popupCloseTimerId) lancé par showCoinTossPopup gère la fermeture effective.
+        } else if (!activeToss && !previousActiveToss && isPopupVisible && !popupCloseTimerId) { 
+            hideCoinTossPopup();
+            if (activeTossTimeoutId) { clearTimeout(activeTossTimeoutId); activeTossTimeoutId = null; }
         }
-        // CASE 3: No toss in progress and none just ended
-       else if (!activeToss && !previousActiveToss) {
-            // Si la popup est encore visible ET qu'AUCUN timer de fermeture n'est actif (sécurité pour états incohérents)
-            if (isPopupVisible && !popupCloseTimerId) { 
-                console.warn("Aucun lancer actif, popup visible et pas de timer fermeture : fermeture forcée.");
-                hideCoinTossPopup();
-            }
-            // Nettoyer le timeout d'écriture (sécurité si lanceur déco avant fin)
-            if (activeTossTimeoutId) {
-                clearTimeout(activeTossTimeoutId);
-                activeTossTimeoutId = null;
-                console.warn("Nettoyage timeout écriture car activeToss est null.");
-            }
-        }
-        // CASE 4: Toss in progress, but no change (we do nothing special here)
-        else if (activeToss && previousActiveToss && previousActiveToss.tossingPlayerId === activeToss.tossingPlayerId) {
-            // Animation continues, close timer is running.
-        }
-    
-        // End Popup Management 
-    
-        // Pause Management & Leader Logic 
+
         let pauseGame = connectedPlayersCount < MIN_CONNECTED_PLAYERS_TO_PROCEED && currentPhase !== 'waiting_start';
         pauseMessageElement.style.display = pauseGame ? 'block' : 'none';
-        if (pauseGame) pauseMessageElement.textContent = `Game paused(${connectedPlayersCount}/${MIN_CONNECTED_PLAYERS_TO_PROCEED}players). Waiting...`;
+        if (pauseGame) pauseMessageElement.textContent = `Game paused (${connectedPlayersCount}/${MIN_CONNECTED_PLAYERS_TO_PROCEED} players). Waiting...`;
     
-        // Le leader n'agit que si jeu non en pause ET aucun lancer en cours
-        if (isLeader && !pauseGame && !activeToss) {
-            //console.log("Exécution logique Leader..."); // Peut être verbeux
+        if (isLeader && !pauseGame && !localGameState.activeToss) {
             if (currentPhase === 'waiting_start' && connectedPlayersCount >= MIN_CONNECTED_PLAYERS_TO_PROCEED) {
-                console.log("Leader: Démarrage 1er tour."); startNewRound(); return;
+                startNewRound(); return;
             }
-            if (currentPhase === 'voting') {
-                const votes = localGameState.votes || {};
-                const connectedVotes = Object.keys(votes).filter(id => localPlayersData[id]?.isConnected);
-                if (connectedVotes.length >= connectedPlayersCount) {
-                    console.log("Leader: Fin votes -> Calcul résultats."); calculateResultsAndTransition(); return;
+            if (currentPhase === 'voting' && Object.keys(localGameState.votes || {}).filter(id => localPlayersData[id]?.isConnected).length >= connectedPlayersCount) {
+                calculateResultsAndTransition(); return;
+            }
+            if (currentPhase === 'confession_selection' && localGameState.confessionData?.targetId) {
+                // La question est déjà assignée. On passe directement à la phase de questionnement.
+                gameStateRef.child('phase').set('confession_question'); 
+                return;
+            }
+            if (currentPhase === 'confession_question') {
+                const {judgments = {}, targetId, chooserId} = localGameState.confessionData || {};
+                if(targetId) { 
+                    const connectedJudgesCount = Object.keys(localPlayersData).filter(id => localPlayersData[id].isConnected && id !== targetId).length;
+                    if (Object.keys(judgments).length >= connectedJudgesCount) {
+                        calculateConfessionVerdict(); return;
+                    }
                 }
             }
-            if (currentPhase === 'results') {
-                const ready = localGameState.readyForNextRound || {};
-                const connectedReady = Object.keys(ready).filter(id => localPlayersData[id]?.isConnected);
-                if (connectedReady.length >= connectedPlayersCount) {
-                    console.log("Leader: Tous prêts -> Prochain tour."); startNewRound(); return;
-                }
+            if ((currentPhase === 'results' || currentPhase === 'confession_result') && Object.keys(localGameState.readyForNextRound || {}).filter(id => localPlayersData[id]?.isConnected).length >= connectedPlayersCount) {
+                startNewRound(); return;
             }
-        }
-    
-        //  Phase Display
+        }  
+        const phase = localGameState.phase || 'waiting_start';
+        const isConfession = (phase === 'confession_selection' || phase === 'confession_question' || phase === 'confession_result');
+        setConfessionMode(isConfession);
         if (!pauseGame) {
-            // Éviter de changer de phase si la popup est visible pour montrer le résultat
             if (isPopupVisible && currentPhase === 'results') {
-                console.log("Popup visible, rendu résultats en arrière-plan.");
-                showPhase('results'); // Assurer que la div est active
-                renderResultsPhase(); // Mettre à jour le contenu
+                showPhase('results'); 
+                renderResultsPhase(); 
             } else {
                  switch (currentPhase) {
                     case 'voting': showPhase('voting'); renderVotingPhase(); break;
                     case 'results': showPhase('results'); renderResultsPhase(); break;
+                    case 'confession_selection': showPhase('confession-selection'); renderConfessionSelection(); break;
+                    case 'confession_question': showPhase('confession-question'); renderConfessionQuestion(); break;
+                    case 'confession_result': showPhase('confession-result'); renderConfessionResultPhase(); break;
                     case 'waiting_start':
                         showPhase('waiting');
                         waitingMessage.textContent = connectedPlayersCount >= MIN_CONNECTED_PLAYERS_TO_PROCEED
-                            ? "Preparing..." : `Waiting for players (${connectedPlayersCount}/${MIN_CONNECTED_PLAYERS_TO_PROCEED})...`;
+                            ? "Preparing..." : `Waiting... (${connectedPlayersCount}/${MIN_CONNECTED_PLAYERS_TO_PROCEED})`;
                         break;
                     default: showPhase('waiting'); waitingMessage.textContent = "Loading..."; break;
                  }
             }
         } else {
-             // Si en pause, s'assurer que le contenu sous-jacent est à jour même si non visible activement
              if (currentPhase === 'results') renderResultsPhase();
              else if (currentPhase === 'voting') renderVotingPhase();
         }
     }
     
-    
     // --- Game Logic Functions (Leader) ---
     
-    /**
-     * Starts a new round (Leader only).
-     * Selects a new question, resets round-specific game state, and updates Firebase.
-     */
     function startNewRound() {
         if (!isLeader) return;
-        const newQuestion = getRandomQuestion();
-        const nextRoundNumber = (localGameState.round || 0) + 1;
-        console.log(`Leader: Début Manche ${nextRoundNumber}`);
+
+        // --- LOGGING DE L'HISTORIQUE (VOTRE CODE EST DÉJÀ CORRECT ICI) ---
+        const completedRoundData = { ...localGameState };
+        const updates = {}; 
+
+        if ((localGameState.round || 0) > 0) {
+            // Grâce à nos modifications, prepareRoundLog va maintenant inclure la confession si elle existe.
+            const roundHistoryUpdate = HistoryLogger.prepareRoundLog(completedRoundData);
+            if (roundHistoryUpdate) {
+                Object.assign(updates, roundHistoryUpdate);
+            }
+        } else if (!localFullGameData.history) { 
+            const summaryUpdate = HistoryLogger.prepareSummaryLog(localFullGameData, localPlayersData);
+            if (summaryUpdate) {
+                Object.assign(updates, summaryUpdate);
+            }
+        }
+
+        let finalRoundsUntilConfession = localGameState.roundsUntilConfession;
+
+        if (confessionModeEnabled) {
+            let currentCountdown = localGameState.roundsUntilConfession;
+            if (currentCountdown === undefined || currentCountdown === null || currentCountdown < 0) {
+                // --- AMÉLIORATION --- : Ratio de 3 à 5 tours
+                currentCountdown = Math.floor(Math.random() * 3) + 2; // Génère 3, 4, ou 5
+                console.log(`Initializing confession countdown to ${currentCountdown} rounds.`);
+            }
+            currentCountdown--;
+            console.log(`Rounds until confession: ${currentCountdown}`);
+            if (currentCountdown <= 0) {
+                startConfessionPhase();
+                return;
+            }
+            finalRoundsUntilConfession = currentCountdown;
+        }
+
+        const usedIndicesObject = localGameState.usedQuestionIndices || {};
+        const usedIndicesSet = new Set(Object.keys(usedIndicesObject).map(Number));
+        const newQuestionData = getNewQuestion(usedIndicesSet);
+        if (!newQuestionData) {
+            console.error("Leader: Failed to get a new question.");
+            return;
+        }
+        usedIndicesSet.add(newQuestionData.index);
+
         const newGameState = {
-            round: nextRoundNumber,
+            round: (localGameState.round || 0) + 1,
             phase: 'voting',
-            question: newQuestion,
-            votes: null,
-            results: null,
+            question: newQuestionData.question,
+            roundsUntilConfession: confessionModeEnabled ? finalRoundsUntilConfession : null,
+            votes: null, 
+            results: null, 
             readyForNextRound: null,
-            coinTosses: null,
-            activeToss: null // S'assurer de réinitialiser le lancer actif
+            coinTosses: null, 
+            activeToss: null,
+            usedQuestionIndices: Object.fromEntries(usedIndicesSet.entries()),
+            
+            // CORRECTION FINALE : On nettoie les données de la confession pour le nouveau round.
+            confessionData: null, 
+            confessionResult: null
         };
-        gameStateRef.set(newGameState)
-          .catch(error => console.error("Leader: Erreur startNewRound:", error));
+        // --- MISE À JOUR ATOMIQUE ---
+        updates['currentGame'] = newGameState;
+        gameRef.update(updates).catch(error => console.error("Leader: Error starting new round with history logging:", error));
     }
     
-    /**
-     * Calculates vote results and transitions the game to the 'results' phase (Leader only).
-     * Updates Firebase with vote counts and new phase.
-     */
     function calculateResultsAndTransition() { 
         if (!isLeader) return;
         const votes = localGameState.votes || {};
-        console.log("Leader: Calcul résultats:", votes);
         const voteCounts = {};
-        // Initialiser le compte pour tous les joueurs ACTUELS pour éviter erreurs si qqn part pile à ce moment
         Object.keys(localPlayersData).forEach(playerId => {
-            if(localPlayersData[playerId]) { // Vérifier que le joueur existe toujours dans les données locales
-                 voteCounts[playerId] = 0;
-            }
+            if(localPlayersData[playerId]) voteCounts[playerId] = 0;
         });
         Object.values(votes).forEach(votedForId => {
-            if (voteCounts.hasOwnProperty(votedForId)) {
-                voteCounts[votedForId]++;
-            } else {
-                console.warn(`Vote pour ${votedForId} (inconnu/parti).`);
-            }
+            if (voteCounts.hasOwnProperty(votedForId)) voteCounts[votedForId]++;
         });
-        console.log("Leader: Résultats calculés:", voteCounts);
-        gameStateRef.update({
-                phase: 'results',
-                results: voteCounts,
-                // Ne pas toucher à coinTosses ou activeToss ici
-            })
-            .then(() => console.log("Leader: Phase 'results' et résultats écrits."))
+        gameStateRef.update({ phase: 'results', results: voteCounts })
             .catch(error => console.error("Leader: Erreur transition vers results:", error));
+    }
+
+function startConfessionPhase() {
+    if (!isLeader) return;
+    
+    // --- La logique pour trouver la question, le chooser, etc. reste la même ---
+    const usedConfessionIndicesObj = localFullGameData.usedConfessionQuestionIndices || {};
+    const usedIndicesSet = new Set(Object.keys(usedConfessionIndicesObj).map(Number));
+    const newQuestionData = getNewConfessionQuestion(usedIndicesSet);
+    
+    if (!newQuestionData) {
+        console.error("Leader: Failed to get a confession question. Aborting...");
+        startNewRound(); // On retourne à un round normal
+        return;
+    }
+    usedIndicesSet.add(newQuestionData.index);
+
+    const lastResults = localGameState.results || {};
+    let maxVotes = -1;
+    const tiedPlayers = [];
+
+    Object.entries(lastResults).forEach(([playerId, votes]) => {
+        if (localPlayersData[playerId]?.isConnected) { 
+            if (votes > maxVotes) {
+                maxVotes = votes;
+                tiedPlayers.length = 0; 
+                tiedPlayers.push(playerId);
+            } else if (votes === maxVotes && maxVotes > 0) { // On ne prend en compte que les égalités s'il y a eu des votes.
+                tiedPlayers.push(playerId);
+            }
+        }
+    });
+
+    let chooserId = null;
+    if (tiedPlayers.length > 0) {
+        chooserId = tiedPlayers[Math.floor(Math.random() * tiedPlayers.length)];
+    } else {
+        const connectedPlayerIds = Object.keys(localPlayersData).filter(id => localPlayersData[id].isConnected);
+        if (connectedPlayerIds.length > 0) {
+           chooserId = connectedPlayerIds[Math.floor(Math.random() * connectedPlayerIds.length)];
+        } else {
+            console.warn("Confession phase aborted, no connected players.");
+            startNewRound();
+            return;
+        }
+    }
+    
+    const nextConfessionIn = Math.floor(Math.random() * 3) + 3;
+    
+    const updates = {};
+
+    // 1. Mettre à jour les champs de `currentGame` nécessaires pour la confession
+    updates['/currentGame/phase'] = 'confession_selection';
+    updates['/currentGame/roundsUntilConfession'] = nextConfessionIn;
+    updates['/currentGame/confessionData'] = { 
+        chooserId: chooserId, 
+        targetId: null, 
+        question: newQuestionData.question,
+        judgments: null 
+    };
+    // On nettoie le 'ready' du tour précédent
+    updates['/currentGame/readyForNextRound'] = null; 
+
+    // IMPORTANT : On ne touche PAS à `votes`, `results`, `coinTosses`.
+    // Ils sont préservés.
+
+    // 2. Mettre à jour la liste des questions de confession utilisées (à la racine du lobby)
+    updates['/usedConfessionQuestionIndices'] = Object.fromEntries(usedIndicesSet.entries());
+
+    // 3. On envoie la mise à jour atomique
+    gameRef.update(updates).catch(error => console.error("Leader: Error starting confession phase:", error));
+}
+    
+    function renderConfessionSelection() {
+    const { chooserId, question } = localGameState.confessionData || {};
+    const chooserPseudo = localPlayersData[chooserId]?.pseudo || 'Quelqu\'un';
+    const isChooser = currentUserId === chooserId;
+
+    // Remplir le texte de la question dans son cadre
+    confessionQuestionTextSelection.textContent = question || "Chargement de la question...";
+    confessionQuestionTextSelection.classList.add('confession-question-hero', 'reveal-in');
+    confessionQuestionTextSelection.style.display = 'block';
+
+    if (isChooser) {
+        // --- Vue pour le joueur qui choisit une victime ---
+        confessionSelectionSubtitle.innerHTML = "C’est ton moment de vengeance… Choisis qui devra répondre à cette question :";
+        confessionSelectionInstruction.innerHTML = "🔍 Clique sur un joueur pour le désigner comme victime.";
+
+        // Logique pour peupler les options (inchangée)
+        playerConfessionTargetOptionsDiv.style.display = 'grid'; 
+        playerConfessionTargetOptionsDiv.innerHTML = '';
+        const immunePlayers = localFullGameData.immuneToConfession || {};
+        Object.entries(localPlayersData).forEach(([playerId, player]) => {
+            // if (!player.isConnected ) return;
+            const btn = document.createElement('button');
+            btn.className = 'player-vote-btn';
+            btn.dataset.targetId = playerId;
+            const img = document.createElement('img');
+            img.src = player.avatarSrc;
+            img.className = 'player-avatar';
+            img.alt = "Avatar";
+            btn.appendChild(img);
+            const nameSpan = document.createElement('span');
+            nameSpan.className = 'player-name-vote';
+            nameSpan.textContent = player.pseudo;
+            btn.appendChild(nameSpan);
+            btn.addEventListener('click', handleConfessionTargetSelection);
+            if (immunePlayers[playerId]) {
+                btn.disabled = true;
+                const immuneSpan = document.createElement('span');
+                immuneSpan.textContent = '😇';
+                immuneSpan.style.fontSize = '1.5em';
+                btn.appendChild(immuneSpan);
+                btn.style.opacity = 0.6;
+            }
+            playerConfessionTargetOptionsDiv.appendChild(btn);
+        });
+
+    } else {
+        // --- Vue pour les autres joueurs qui attendent le choix ---
+        confessionSelectionSubtitle.innerHTML = `⚠️ <strong>${chooserPseudo}</strong> est en train de choisir qui devra répondre à la question :`;
+        confessionSelectionInstruction.innerHTML = "⏳ Patientez… la sentence va tomber.";
+        playerConfessionTargetOptionsDiv.innerHTML = '';
+        playerConfessionTargetOptionsDiv.style.display = 'none';
+    }
+}
+    
+   function handleConfessionTargetSelection(event) {
+      // Utiliser .closest() est plus sûr pour s'assurer qu'on attrape le bouton,
+      // même si l'utilisateur clique sur l'avatar ou le nom à l'intérieur.
+      const button = event.target.closest('.player-vote-btn');
+      if (!button) {
+          console.error("Clic invalide, bouton non trouvé.");
+          return;
+      }
+
+      const targetId = button.dataset.targetId;
+      console.log("targetId: ", targetId);
+
+      // --- CORRECTION ET SÉCURITÉ ---
+      // On vérifie que targetId n'est pas null, undefined, ou une chaîne vide.
+      if (!targetId) {
+          console.error("Impossible de sélectionner la cible : targetId est invalide.", targetId);
+          alert("An error occurred while selecting the player. Please try again.");
+          return; // On arrête l'exécution pour ne rien envoyer à Firebase.
+      }
+
+      console.log(`The avenger chose: ${targetId}. Sending signal to leader.`);
+      
+      // Désactiver tous les boutons pour éviter un double clic
+      document.querySelectorAll('#player-confession-target-options .player-vote-btn').forEach(b => b.disabled = true);
+      
+      // Appliquer un style visuel sur le bouton sélectionné
+      button.classList.add('voted-for');
+
+      // On envoie la valeur (maintenant validée) à Firebase
+      gameStateRef.child('confessionData/targetId').set(targetId)
+          .catch(err => {
+              console.error("Error selecting confession target:", err);
+              // Si l'écriture échoue, réactiver les boutons pour que l'utilisateur puisse réessayer.
+              document.querySelectorAll('#player-confession-target-options .player-vote-btn').forEach(b => b.disabled = false);
+              button.classList.remove('voted-for');
+              alert("Failed to record your choice. Please try again.");
+          });
+  }
+    
+    function renderConfessionQuestion() {
+    const { targetId, question, judgments = {} } = localGameState.confessionData || {};
+    const targetPseudo = localPlayersData[targetId]?.pseudo || 'La victime';
+    const isTarget = currentUserId === targetId;
+
+    // Remplir le texte de la question dans son cadre
+    confessionQuestionText.textContent = question || "En attente de la question...";
+    confessionQuestionText.classList.add('confession-question-hero', 'reveal-in');
+    confessionQuestionText.style.display = 'block';
+
+    if (isTarget) {
+        // --- Vue pour le joueur qui doit répondre ---
+        confessionQuestionSubtitle.innerHTML = "C’est à toi de jouer ! Réponds honnêtement ou invente, mais tu dois répondre à la question :";
+        confessionAnswerPrompt.innerHTML = "📢 Réponds à voix haute devant tout le monde.";
+        confessionAnswerPrompt.style.display = 'block';
+        confessionJudgmentArea.style.display = 'none';
+    } else {
+        // --- Vue pour les joueurs qui jugent ---
+        confessionQuestionSubtitle.innerHTML = `🎯 <strong>${targetPseudo}</strong> est en train de répondre à la question :`;
+        confessionJudgmentInstruction.innerHTML = "✅ Clique sur <strong>CONVINCED</strong> si tu crois sa réponse, ❌ sur <strong>NOT BUYING IT</strong> si tu penses qu’il/elle ment.";
+        
+        confessionAnswerPrompt.style.display = 'none';
+        confessionJudgmentArea.style.display = 'block';
+
+        // Logique pour les boutons de jugement et la barre de progression (inchangée)
+        const hasJudged = !!judgments[currentUserId];
+        judgmentConvincedBtn.disabled = hasJudged;
+        judgmentNotConvincedBtn.disabled = hasJudged;
+        judgmentStatus.textContent = hasJudged ? "Ton verdict est enregistré." : "En attente de ton verdict...";
+    }
+    const meterFill = document.querySelector('#jury-meter .jury-fill');
+    if (meterFill) { // On vérifie juste que notre sélecteur a bien fonctionné
+        const totalEligible = Object.keys(localPlayersData).filter(id => localPlayersData[id]?.isConnected && id !== targetId).length;
+        const currentVotes = Object.keys(judgments).length;
+        const percentage = (totalEligible > 0) ? (currentVotes / totalEligible) * 100 : 0;
+        meterFill.style.width = percentage + '%';
+    }
+
+}
+
+    function handleJudgmentClick(vote) {
+        const { targetId, chooserId } = localGameState.confessionData || {};
+        if (currentUserId === targetId) return;
+        gameStateRef.child(`confessionData/judgments/${currentUserId}`).set(vote)
+            .catch(err => console.error("Error sending judgment:", err));
+    }
+    
+   function calculateConfessionVerdict() {
+        if (!isLeader) return;
+        
+        const { judgments, targetId, chooserId, question } = localGameState.confessionData;
+        const targetPseudo = localPlayersData[targetId]?.pseudo || 'The victim';
+        
+        const convincedVotes = Object.values(judgments || {}).filter(v => v === 'convaincu').length;
+        const totalVotes = Object.keys(judgments || {}).length;
+        const verdict = (totalVotes > 0 && convincedVotes >= totalVotes / 2) ? 'convaincu' : 'pas convaincu';
+        
+        const confessionResult = {
+            playerName: targetPseudo,
+            outcome: verdict,
+            details: `${convincedVotes} / ${totalVotes} convinced`
+        };
+
+        // --- LOGGING SUPPRIMÉ D'ICI ---
+        // On ne touche plus à l'historique à cette étape.
+        const updates = {};
+        let immunePlayers = localFullGameData.immuneToConfession || {};
+        if (verdict === 'convaincu') {
+            immunePlayers[targetId] = true;
+        }
+
+        const connectedPlayerIds = Object.keys(localPlayersData).filter(id => localPlayersData[id].isConnected);
+        const immuneConnectedCount = connectedPlayerIds.filter(id => immunePlayers[id]).length;
+        
+        // Si tous les joueurs connectés sont devenus immunes, on reset la liste.
+        if (immuneConnectedCount >= connectedPlayerIds.length) { 
+            console.log("All connected players are immune! Resetting the list.");
+            updates['/immuneToConfession'] = null; // Vide la liste
+        } else if (verdict === 'convaincu') {
+            updates[`/immuneToConfession/${targetId}`] = true; // Ajoute le joueur
+        }
+        
+        // Mise à jour de l'état du jeu pour la phase de résultat de la confession
+        updates['/currentGame/phase'] = 'confession_result'; 
+        updates['/currentGame/confessionResult'] = confessionResult; // On stocke le résultat
+        updates['/currentGame/readyForNextRound'] = null;  
+
+        gameRef.update(updates);
+    }
+
+    function renderConfessionResultPhase() {
+      const confessionResult = localGameState.confessionResult;
+      if (confessionResult) {
+        const outcomeText = confessionResult.outcome === 'convaincu'
+          ? `convinced the jury and becomes <strong>immune</strong>! 😇`
+          : `did <strong>NOT</strong> convince the jury and remains a target! 😈`;
+
+        // 1) on pose le contenu
+        confessionVerdictDisplay.innerHTML = `
+          <p style="font-size: 1.1em;">
+            <strong>${confessionResult.playerName}</strong> ${outcomeText}
+          </p>
+          <p style="font-size: 0.9em; color: var(--clr-primary-green)">
+            (${confessionResult.details})
+          </p>`;
+
+        // 2) ensuite on ajoute le stamp par-dessus
+        showVerdictStamp(confessionResult.outcome);
+      } else {
+        confessionVerdictDisplay.innerHTML = `<p class="status-message">Waiting for the verdict...</p>`;
+      }
+
+      const readyForNext = localGameState.readyForNextRound || {};
+      isReadyForNext = !!readyForNext[currentUserId];
+      nextRoundBtnConfession.disabled = isReadyForNext;
+      nextRoundBtnConfession.textContent = isReadyForNext ? "Ready!" : "Ready for the next round?";
+      const connectedReadyCount = Object.keys(readyForNext).filter(id => localPlayersData[id]?.isConnected).length;
+      readyStatusConfession.textContent = `${connectedReadyCount} / ${connectedPlayersCount} players are ready!`;
     }
     
     // --- Startup & Teardown ---
-    /** Initializes the game when the DOM is fully loaded. */
     document.addEventListener('DOMContentLoaded', initializeGame);
-    
-    window.addEventListener('beforeunload', () => {
-        console.log("beforeunload: onDisconnect gère la déconnexion.");
-        // cleanupListenersAndDisconnect();
-    });
-    </script>
+    window.addEventListener('beforeunload', () => { console.log("onDisconnect will handle the disconnection."); });
+</script>

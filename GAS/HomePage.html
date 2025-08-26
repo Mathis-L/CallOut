@@ -5,6 +5,7 @@
     <title>Accueil - Call Out Game</title>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Lilita+One&family=Poppins:ital,wght@0,100;0,200;0,300;0,400;0,500;0,600;0,700;0,800;0,900;1,100;1,200;1,300;1,400;1,500;1,600;1,700;1,800;1,900&display=swap" rel="stylesheet">
@@ -410,8 +411,6 @@
         <div class="sparkle s4"></div>
         <div class="card-content">
             <div id="messageArea">
-              <? if (error) { ?> <p class="error"><?!= error ?></p> <? } ?>
-              <? if (message) { ?> <p class="message"><?!= message ?></p> <? } ?>
             </div>
             
             <div id="selectedAvatarDisplay">
@@ -469,6 +468,7 @@
           firebaseApp = firebase.app();
        }
       const database = firebase.database();
+      const auth = firebase.auth();
       const lobbiesRef = database.ref('lobbies');
 
       // --- DOM Element References ---
@@ -492,6 +492,8 @@
       // --- Global Variables ---
       let webAppBaseUrl = null; // To be loaded on startup, used for generating redirect URLs
       let currentSelectedAvatarElement = null; // Keeps track of the currently selected avatar DOM element
+      let currentUserId = null; 
+
 
       // --- Utility Functions ---
 
@@ -506,42 +508,27 @@
       }
 
       /**
-       * Generates a unique user ID.
-       * @returns {string} The generated user ID.
-       */
-      function generateUserId() {
-         return 'user_' + Date.now().toString(36) + Math.random().toString(36).substring(2, 9);
-      }
-
-      /**
        * Asynchronously fetches the web app's base URL using Google Apps Script's `getScriptUrl()`.
-       * Enables UI buttons upon successful fetch.
        */
       async function fetchWebAppUrl() {
-         console.log("Tentative de récupération de l'URL de base...");
-         try {
-             webAppBaseUrl = await new Promise((resolve, reject) => {
-                 if (typeof google !== 'undefined' && google.script && google.script.run) {
-                     google.script.run.withSuccessHandler(resolve).withFailureHandler(reject).getScriptUrl();
-                 } else {
-                     console.error("Contexte GAS non disponible.");
-                     // Fallback for local testing (may not work for all GAS functionalities)
-                     resolve(window.location.origin + window.location.pathname);
-                     // reject("Contexte GAS non disponible.");
-                 }
-             });
-             console.log("URL de base récupérée:", webAppBaseUrl);
-             // Enable buttons once the URL is ready
-             createGameBtn.disabled = false;
-             joinGameBtn.disabled = false;
-         } catch (error) {
-             console.error("Échec de la récupération de l'URL de base:", error);
-             showAlert("Uh-oh! 🚨 Server’s gone on a snack break—can’t fetch your vibes right now! Hit refresh and let’s try again!", 'error');
-             // Garder les boutons désactivés car la navigation échouera
-             createGameBtn.disabled = true;
-             joinGameBtn.disabled = true;
-         }
+        console.log("Attempting to fetch web app base URL...");
+        try {
+          webAppBaseUrl = await new Promise((resolve, reject) => {
+            if (typeof google !== 'undefined' && google.script && google.script.run) {
+              google.script.run.withSuccessHandler(resolve).withFailureHandler(reject).getScriptUrl();
+            } else {
+              console.warn("GAS context not available, falling back to window origin.");
+              resolve(window.location.origin + window.location.pathname);
+            }
+          });
+          console.log("Base URL fetched:", webAppBaseUrl);
+          // Do not enable buttons here; wait for authentication to complete.
+        } catch (error) {
+          console.error("Failed to fetch base URL:", error);
+          showAlert("Uh-oh! 🚨 Server’s gone on a snack break—can’t fetch your vibes right now!", 'error');
+        }
       }
+
 
        /**
        * Generates a redirect URL for different pages of the web app.
@@ -552,13 +539,13 @@
        * @returns {string|null} The generated URL or null if the base URL is not available.
        */
       function generateRedirectUrl(page, gameId, userId, pseudo) {
-         if (!webAppBaseUrl) {
-            console.error("URL de base non disponible pour générer l'URL de redirection !");
-            return null; // Gérer cette erreur dans l'appelant
-         }
-         const url = `${webAppBaseUrl}?page=${page}&gameId=${encodeURIComponent(gameId)}&userId=${encodeURIComponent(userId)}&pseudo=${encodeURIComponent(pseudo)}`;
-         console.log("URL de redirection générée:", url);
-         return url;
+        if (!webAppBaseUrl) {
+          console.error("Base URL not available for generating redirect URL!");
+          return null;
+        }
+        const url = `${webAppBaseUrl}?page=${page}&gameId=${encodeURIComponent(gameId)}&userId=${encodeURIComponent(userId)}&pseudo=${encodeURIComponent(pseudo)}`;
+        console.log("Generated redirect URL:", url);
+        return url;
       }
 
       /**
@@ -732,49 +719,46 @@
         // Validations
         if (!pseudo) { showAlert("Enter your nickname to get started! ✨", 'error'); return; }
         if (!selectedAvatarSrc) { showAlert("Please choose an avatar! 🎭", 'error'); return; }
-        if (!webAppBaseUrl) { showAlert("Hold up! 🚧 App’s not ready—missing its base URL! Try again", 'error'); return;} 
+        if (!currentUserId || !webAppBaseUrl) { showAlert("Hold up! 🚧 App’s not ready yet! Try again in a sec.", 'error'); return; }
 
         // Update UI to indicate loading state
         createGameBtn.textContent = "Creating...";
         createGameBtn.disabled = true;
         joinGameBtn.disabled = true;
 
-        const newUserId = generateUserId();
         const newGameId = generateGameId();
         const gameRef = lobbiesRef.child(newGameId);
 
         try {
-          // Prepare data for the new game
           const newGameData = {
-              leaderId: newUserId, 
-              createdAt: firebase.database.ServerValue.TIMESTAMP, // Server-side timestamp
-              status: 'waiting', // Initial game status
-              players: {
-                [newUserId]: { // Player object for the creator
-                   pseudo: pseudo, 
-                   avatarSrc: selectedAvatarSrc, 
-                   joinedAt: firebase.database.ServerValue.TIMESTAMP, 
-                   isConnected: true, 
-                   lastSeen: firebase.database.ServerValue.TIMESTAMP 
-                }
+            leaderId: currentUserId, // Secure ID
+            createdAt: firebase.database.ServerValue.TIMESTAMP,
+            status: 'waiting',
+            players: {
+              [currentUserId]: { // Secure ID
+                pseudo: pseudo,
+                avatarSrc: selectedAvatarSrc,
+                joinedAt: firebase.database.ServerValue.TIMESTAMP,
+                isConnected: true,
+                lastSeen: firebase.database.ServerValue.TIMESTAMP
               }
+            }
           };
-          await gameRef.set(newGameData); // Create the game in Firebase
-          console.log(`Partie ${newGameId} créée par ${pseudo} (${newUserId})`);
+          await gameRef.set(newGameData);
+          console.log(`Game ${newGameId} created by ${pseudo} (${currentUserId})`);
 
-          // Instead of direct redirection, show a confirmation link (iOS workaround)
-          const lobbyUrl = generateRedirectUrl('lobby', newGameId, newUserId, pseudo);
+          const lobbyUrl = generateRedirectUrl('lobby', newGameId, currentUserId, pseudo);
           if (lobbyUrl) {
-              showRedirection(`Game "${newGameId}" is live! 🎉 Tap below to enter the lobby!`, lobbyUrl);
+            showRedirection(`Game "${newGameId}" is live! 🎉 Tap below to enter the lobby!`, lobbyUrl);
           } else {
-              showAlert("Uh-oh! Trouble getting the redirect ready!", 'error');
-              resetUI(); // Reset UI on error
+            showAlert("Uh-oh! Trouble getting the redirect ready!", 'error');
+            resetUI();
           }
 
         } catch (error) {
-            console.error("Erreur Création Firebase:", error);
-            showAlert("Game creation failed! ⚠️ Try again!", 'error');
-            resetUI(); // Réinitialiser l'UI
+          console.error("Firebase Create Error:", error);
+          showAlert("Game creation failed! ⚠️ Try again!", 'error');
+          resetUI();
         }
       });
 
@@ -788,7 +772,7 @@
         if (!pseudo) { showAlert("Enter your nickname to get started! ✨", 'error'); return; }
         if (!selectedAvatarSrc) { showAlert("Please choose an avatar! 🎭", 'error'); return; }
         if (!gameId) { showAlert("Need a game code to jump in! 🔑", 'error'); return; }
-        if (!webAppBaseUrl) { showAlert("Hold up! 🚧 App’s not ready—missing its base URL! Try again", 'error'); return;} 
+        if (!currentUserId || !webAppBaseUrl) { showAlert("Hold up! 🚧 App’s not ready yet! Try again in a sec.", 'error'); return; }
 
         // Update UI to indicate loading state
         joinGameBtn.textContent = "Connecting...";
@@ -847,18 +831,17 @@
                     return;
                 }
 
-                const newUserId = generateUserId();
-                const newPlayerData = {
-                    pseudo: pseudo, 
-                    avatarSrc: selectedAvatarSrc, 
+                 const newPlayerData = {
+                    pseudo: pseudo,
+                    avatarSrc: selectedAvatarSrc,
                     joinedAt: firebase.database.ServerValue.TIMESTAMP,
-                    isConnected: true, 
+                    isConnected: true,
                     lastSeen: firebase.database.ServerValue.TIMESTAMP
                 };
-                await gameRef.child('players').child(newUserId).set(newPlayerData); // Add new player to Firebase
-                console.log(`${pseudo} (${newUserId}) a rejoint la partie ${gameId}.`);
+                await gameRef.child('players').child(currentUserId).set(newPlayerData);
+                console.log(`${pseudo} (${currentUserId}) joined game ${gameId}.`);
 
-                targetUrl = generateRedirectUrl('lobby', gameId, newUserId, pseudo); // New players go to the lobby
+                targetUrl = generateRedirectUrl('lobby', gameId, currentUserId, pseudo);
                 confirmationMsg = `You’ve joined game "${gameId}"! 🎉 Tap below to enter the lobby!`;
             }
 
@@ -878,33 +861,58 @@
       });
 
       // --- Initialization and UI Management on Page Load ---
-      window.addEventListener('load', () => {
-        // Fetch the web app's base URL on startup
-        // Disable buttons initially until the URL is ready
+      window.addEventListener('load', async () => {
+        // Disable buttons until everything is ready.
         createGameBtn.disabled = true;
         joinGameBtn.disabled = true;
-        fetchWebAppUrl();  // Asynchronously fetches the URL
+        createGameBtn.textContent = "Connecting..."; // Indicate loading state
 
-        pseudoInput.focus(); // Focus on the pseudo input field
-
-        // Load saved pseudo from localStorage
+        pseudoInput.focus();
         const savedPseudo = localStorage.getItem('multiplayerGamePseudo');
-        if(savedPseudo) pseudoInput.value = savedPseudo;
+        if (savedPseudo) pseudoInput.value = savedPseudo;
+        populateAvatarOptions();
 
-         // Populate avatar options and load saved avatar
-        populateAvatarOptions(); 
-       
-        // Handle URL parameters (e.g., pre-fill game code, display messages)
+        // ** NEW SEQUENCE OF EVENTS **
+        // 1. Fetch the app's base URL.
+        await fetchWebAppUrl();
+        // 2. Authenticate the user. This will enable the UI on success.
+        auth.onAuthStateChanged(async (user) => {
+            if (user) {
+                // --- L'UTILISATEUR EST CONNECTÉ ! ---
+                console.log("Signed in anonymously. Secure UID:", user.uid);
+                currentUserId = user.uid; // Stocker l'UID sécurisé
+
+                // Maintenant, et seulement maintenant, on active l'interface
+                createGameBtn.disabled = false;
+                joinGameBtn.disabled = false;
+                createGameBtn.textContent = "Create a Party!";
+                showAlert("Ready to roll! ✨", 'message');
+
+            } else {
+                // --- L'UTILISATEUR N'EST PAS CONNECTÉ ---
+                // On essaie de le connecter anonymement
+                console.log("No user signed in. Attempting anonymous sign-in...");
+                try {
+                    const userCredential = await auth.signInAnonymously();
+                    // Si la connexion réussit, onAuthStateChanged se redéclenchera avec le nouvel 'user'
+                    // et passera dans le bloc 'if (user)' ci-dessus.
+                    console.log("Anonymous sign-in successful, auth state will update.");
+                } catch (error) {
+                    console.error("Anonymous sign-in error:", error);
+                    showAlert("Could not connect to the game server. Please refresh the page.", 'error');
+                    // Les boutons resteront désactivés
+                }
+            }
+        });
+        
+        // Handle URL parameters (unchanged)
         const urlParams = new URLSearchParams(window.location.search);
         const codeFromUrl = urlParams.get('code');
         if (codeFromUrl) gameIdInput.value = codeFromUrl.toUpperCase();
-
-        // Display errors or messages passed via URL parameters
         const errorFromUrl = urlParams.get('error');
         if (errorFromUrl) showAlert(decodeURIComponent(errorFromUrl), 'error', messageArea);
         const messageFromUrl = urlParams.get('message');
         if (messageFromUrl) showAlert(decodeURIComponent(messageFromUrl), 'message', messageArea);
-
       });
 
       // --- Input Event Listeners ---

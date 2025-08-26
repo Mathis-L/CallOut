@@ -1,0 +1,122 @@
+{
+  "rules": {
+    ".read": false,
+    ".write": false,
+
+    "lobbies": {
+      "$gameId": {
+        ".read": "auth != null && (root.child('lobbies').child($gameId).child('status').val() === 'waiting' || root.child('lobbies').child($gameId).child('players').child(auth.uid).exists())",
+        ".write": "auth != null",
+        ".validate": "!data.exists() ? (newData.hasChild('leaderId') && newData.child('leaderId').val() === auth.uid && newData.hasChild('status') && newData.hasChild('players') && newData.child('players').child(auth.uid).exists()) : true",
+
+        "leaderId": { ".validate": "newData.isString()" },
+        "status": {
+        ".write": "auth != null && root.child('lobbies').child($gameId).child('leaderId').val() === auth.uid",
+        ".validate": "newData.val() === 'waiting' || newData.val() === 'playing' || newData.val() === 'finished'"
+      },
+      "endTime": {
+        ".write": "auth != null && root.child('lobbies').child($gameId).child('leaderId').val() === auth.uid",
+        ".validate": "newData.isNumber()" 
+      },
+        "selectedQuestionSet": {
+          ".write": "auth != null && data.parent().child('leaderId').val() === auth.uid && data.parent().child('status').val() === 'waiting'",
+          ".validate": "newData.val() === 'gentle' || newData.val() === 'mix' || newData.val() === 'extreme' || newData.val() === 'family'"
+        },
+        "confessionModeEnabled": {
+          ".write": "auth != null && data.parent().child('leaderId').val() === auth.uid && data.parent().child('status').val() === 'waiting'",
+          ".validate": "newData.isBoolean()"
+        },
+        "usedConfessionQuestionIndices": {
+          ".write": "auth != null && data.parent().child('leaderId').val() === auth.uid"
+        },
+        "immuneToConfession": {
+            "$playerId": {
+                ".write": "auth != null && data.parent().parent().child('leaderId').val() === auth.uid",
+                ".validate": "newData.val() === true"
+            }
+        },
+        "players": {
+          ".read": "auth != null && (data.parent().child('status').val() === 'waiting' || data.child(auth.uid).exists())",
+          "$playerId": {
+            ".write": "auth != null && ($playerId === auth.uid || (!newData.exists() && data.parent().parent().child('leaderId').val() === auth.uid))",
+            ".validate": "newData.hasChildren(['pseudo','avatarSrc','isConnected'])",
+            "pseudo": { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 20" },
+            "avatarSrc": { ".validate": "newData.isString()" },
+            "isConnected": { ".validate": "newData.isBoolean()" },
+            "$other": { ".validate": true }
+          }
+        },
+        "history": {
+          ".read": "root.child('lobbies').child($gameId).child('players').child(auth.uid).exists()",
+          ".write": false,
+
+          "summary": {
+            ".write": "data.parent().parent().child('leaderId').val() === auth.uid && !data.exists()",
+          },
+
+          "rounds": {
+            "$roundNumber": {
+              ".write": "root.child('lobbies').child($gameId).child('leaderId').val() === auth.uid && !data.exists()",
+              "confessionEvent": {
+                ".write": "root.child('lobbies').child($gameId).child('leaderId').val() === auth.uid && !data.exists()",
+              }
+            }
+          }
+        },
+
+        "currentGame": {
+          ".read": "auth != null && root.child('lobbies').child($gameId).child('players').child(auth.uid).exists()",
+          ".write": "auth != null && data.parent().child('leaderId').val() === auth.uid",
+
+          "phase": { ".validate": "newData.isString() && (newData.val() === 'waiting_start' || newData.val() === 'voting' || newData.val() === 'results' || newData.val() === 'confession_selection' || newData.val() === 'confession_question' || newData.val() === 'confession_result')" },
+          "question": { ".validate": "newData.isString()" },
+          "round": { ".validate": "newData.isNumber()" },
+          "roundsUntilConfession": { ".validate": "newData.isNumber() || newData.val() == null" },
+
+          "votes": {
+            "$playerId": {
+              ".write": "auth != null && (root.child('lobbies').child($gameId).child('leaderId').val() === auth.uid || (root.child('lobbies').child($gameId).child('currentGame').child('phase').val() === 'voting' && $playerId === auth.uid && !data.exists()))",
+              ".validate": "newData.val() == null || (newData.isString() && newData.val() !== auth.uid)"
+            }
+          },
+          "readyForNextRound": {
+            "$playerId": {
+              ".write": "auth != null && (root.child('lobbies').child($gameId).child('leaderId').val() === auth.uid || ((root.child('lobbies').child($gameId).child('currentGame').child('phase').val() === 'results' || root.child('lobbies').child($gameId).child('currentGame').child('phase').val() === 'confession_result') && $playerId === auth.uid))",
+              ".validate": "newData.val() == null || newData.val() === true"
+            }
+          },
+          "activeToss": {
+            ".write": "auth != null && (root.child('lobbies').child($gameId).child('leaderId').val() === auth.uid || (root.child('lobbies').child($gameId).child('currentGame').child('phase').val() === 'results' && ((data.val() == null && newData.child('tossingPlayerId').val() === auth.uid) || (data.child('tossingPlayerId').val() === auth.uid && newData.val() == null))))",
+            ".validate": "newData.val() == null || newData.hasChildren(['tossingPlayerId'])"
+          },
+          "coinTosses": {
+            "$playerId": {
+              ".write": "auth != null && (root.child('lobbies').child($gameId).child('leaderId').val() === auth.uid || ($playerId === auth.uid && !data.exists()))",
+              ".validate": "newData.val() == null || (newData.hasChildren(['result','revealVotes']) && (newData.child('result').val() === 'HEADS' || newData.child('result').val() === 'TAILS') && newData.child('revealVotes').isBoolean())"
+            }
+          },
+
+          "confessionData": {
+            ".write": "root.child('lobbies').child($gameId).child('leaderId').val() === auth.uid",
+            "targetId": {
+              ".write": "auth != null && newData.parent().parent().child('phase').val() === 'confession_selection' && newData.parent().child('chooserId').val() === auth.uid && !data.exists()",
+              ".validate": "newData.isString()"
+            },
+            "judgments": {
+              ".write": "auth != null",
+              "$playerId": {
+                  ".write": "auth != null && $playerId === auth.uid && root.child('lobbies').child($gameId).child('currentGame').child('phase').val() === 'confession_question' && auth.uid !== root.child('lobbies').child($gameId).child('currentGame').child('confessionData').child('targetId').val() && !data.exists()",
+                  ".validate": "newData.val() === 'convaincu' || newData.val() === 'pas convaincu'"
+              }
+            }
+          },
+          "confessionResult": {
+              ".write": "data.parent().parent().child('leaderId').val() === auth.uid"
+          },
+          "$other": { ".validate": true }
+        },
+        "$other": { ".validate": true }
+      }
+    }
+  }
+}

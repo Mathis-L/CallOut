@@ -5,11 +5,7 @@ const FIREBASE_CONFIG = {
   apiKey: scriptProperties.getProperty('FIREBASE_API_KEY'),
   authDomain: scriptProperties.getProperty('FIREBASE_AUTH_DOMAIN'),
   databaseURL: scriptProperties.getProperty('FIREBASE_DATABASE_URL'), // Important pour Realtime Database
-  projectId: scriptProperties.getProperty('FIREBASE_PROJECT_ID'),
-  databaseId : scriptProperties.getProperty('FIREBASE_DATABASE_ID') // Pour périodiquement effacer la base de donnée
-  // storageBucket: "YOUR_STORAGE_BUCKET",
-  // messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
-  // appId: "YOUR_APP_ID"
+  projectId: scriptProperties.getProperty('FIREBASE_PROJECT_ID')
 };
 
 // Fonction principale qui sert l'interface utilisateur
@@ -36,8 +32,8 @@ function doGet(e) {
         template.error = error;
         template.message = message;
         return template.evaluate()
-          .setTitle('Accueil - Jeu Multijoueur')
-          .setFaviconUrl("https://i.imgur.com/3dZdJFS.png")
+          .setTitle('Home - Multiplayer Game GAS')
+          .setFaviconUrl("https://i.imgur.com/3dZdJFS.png") // icône d'onglet web
           .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL)
           .addMetaTag('viewport', 'width=device-width, initial-scale=1');
 
@@ -52,7 +48,7 @@ function doGet(e) {
           template.message = null;
           // Note : On ne peut pas faire de redirection serveur ici facilement, on affiche l'accueil
           return template.evaluate()
-                 .setTitle('Erreur - Jeu Multijoueur')
+                 .setTitle('Error - Multiplayer Game GAS')
                  .setFaviconUrl("https://i.imgur.com/3dZdJFS.png")
                  .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL)
                  .addMetaTag('viewport', 'width=device-width, initial-scale=1');
@@ -64,7 +60,7 @@ function doGet(e) {
         template.pseudo = pseudo;
         template.action = action; // 'create' ou 'join'
         return template.evaluate()
-          .setTitle(`Lobby ${gameId} - Jeu Multijoueur`)
+          .setTitle(`Lobby ${gameId} - Multiplayer Game GAS`)
           .setFaviconUrl("https://i.imgur.com/3dZdJFS.png")
           .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL)
           .addMetaTag('viewport', 'width=device-width, initial-scale=1');
@@ -78,7 +74,7 @@ function doGet(e) {
              template.error = "Impossible d'accéder à la partie : informations manquantes.";
              template.message = null;
              return template.evaluate()
-                    .setTitle('Erreur - Jeu Multijoueur')
+                    .setTitle('Error - Multiplayer Game GAS')
                     .setFaviconUrl("https://i.imgur.com/3dZdJFS.png")
                     .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL)
                     .addMetaTag('viewport', 'width=device-width, initial-scale=1');
@@ -89,11 +85,28 @@ function doGet(e) {
          template.userId = userId;
          template.pseudo = pseudo;
          return template.evaluate()
-           .setTitle(`Partie ${gameId} - Jeu Multijoueur`)
+           .setTitle(`Call Out - Game ${gameId}`)
            .setFaviconUrl("https://i.imgur.com/3dZdJFS.png")
            .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL)
            .addMetaTag('viewport', 'width=device-width, initial-scale=1');
 
+      case 'results':
+        if (!gameId) {
+           Logger.log(`Paramètre manquant pour results: gameId=${gameId}`);
+           template = HtmlService.createTemplateFromFile('HomePage');
+           template.firebaseConfig = JSON.stringify(FIREBASE_CONFIG);
+           template.error = "Impossible d'afficher les résultats : code de partie manquant.";
+           return template.evaluate().setTitle('Error - Call Out Game').setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL).addMetaTag('viewport', 'width=device-width, initial-scale=1');
+        }
+        template = HtmlService.createTemplateFromFile('GameResultsPage');
+        template.firebaseConfig = JSON.stringify(FIREBASE_CONFIG);
+        template.gameId = gameId;
+        return template.evaluate()
+          .setTitle(`Results for ${gameId} - Call Out Game`)
+          .setFaviconUrl("https://i.imgur.com/3dZdJFS.png")
+          .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL)
+          .addMetaTag('viewport', 'width=device-width, initial-scale=1');
+          
       default:
         // Page inconnue, rediriger vers l'accueil
         Logger.log(`Page inconnue demandée: ${page}`);
@@ -102,7 +115,7 @@ function doGet(e) {
         template.error = "Page demandée inconnue ou paramètres invalides.";
         template.message = null;
         return template.evaluate()
-          .setTitle('Accueil - Jeu Multijoueur')
+          .setTitle('Home - Multiplayer Game GAS')
           .setFaviconUrl("https://i.imgur.com/3dZdJFS.png")
           .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL)
           .addMetaTag('viewport', 'width=device-width, initial-scale=1');
@@ -130,15 +143,18 @@ function getScriptUrl() {
  }
 }
 
-// Fonction pour inclure des fichiers HTML partiels (si nécessaire, ex: CSS commun)
+// Fonction pour inclure des fichiers HTML partiels (si nécessaire, ex: CSS commun) 
+// Utile pour Google Apps Script
 function include(filename) {
   return HtmlService.createHtmlOutputFromFile(filename).getContent();
 }
 
-// --- Fonctions serveur potentielles ---
-function cleanUpLobbies() {
+// Fonction pour supprimer tout les lobbies qui ont mal été fermé, 
+// à appeler périodiquement avec 'Déclencheurs' (icône ⏰ à gauche de Apps Scripts)
+// à vous de sélectionner la période pour quand appeler la fonction
+function cleanUpOldLobbies() {
   const databaseUrl = FIREBASE_CONFIG.databaseURL;
-  const secret = FIREBASE_CONFIG.databaseId; // Nécessaire si on utilise REST Auth via Admin SDK
+  const secret = scriptProperties.getProperty('FIREBASE_DATABASE_ID'); // Token d'authentification
 
   const lobbiesPath = `${databaseUrl}/lobbies.json?auth=${secret}`;
 
@@ -152,15 +168,22 @@ function cleanUpLobbies() {
     }
 
     const now = Date.now();
+    const twelveHoursInMs = 12 * 60 * 60 * 1000;
     const expiredLobbyKeys = [];
 
     for (let lobbyId in lobbies) {
       const lobby = lobbies[lobbyId];
-      const players = lobby.players || {};
-      const allDisconnected = Object.values(players).every(p => !p.isConnected);
 
-      if (allDisconnected) {
-        Logger.log(`Tous les joueurs du lobby ${lobbyId} sont déconnectés. Prévu pour suppression.`);
+      // Vérifie la présence de la date de création
+      if (!lobby.createdAt) {
+        Logger.log(`Lobby ${lobbyId} ne contient pas 'createdAt'. Ignoré.`);
+        continue;
+      }
+
+      const age = now - lobby.createdAt;
+
+      if (age > twelveHoursInMs) {
+        Logger.log(`Lobby ${lobbyId} a plus de 12h. Prévu pour suppression.`);
         expiredLobbyKeys.push(lobbyId);
       }
     }

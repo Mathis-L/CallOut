@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <base target="_top">
+    <title>Call Out! - Game Results</title>
+    <!-- Dépendances externes -->
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
+    <!-- Chart.js - La bibliothèque pour nos superbes graphiques -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
+     <script src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
+    
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;900&display=swap" rel="stylesheet">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+
+    <!-- Inclusion du fichier CSS pour les résultats -->
+    <?!= include('GameResultsPage.css'); ?>
+</head>
+<body>
+
+  <div class="container">
+    <header class="main-header">
+      <h1>Game Over!</h1>
+      <p>Here's the final breakdown of game <strong id="game-id-display">#...</strong></p>
+    </header>
+
+    <!-- Zone de chargement (inchangée) -->
+    <div id="loading-state" class="card">
+        <h2>Crunching the Numbers...</h2>
+        <div class="loader"></div>
+        <p class="status-message">Unearthing secrets and tallying scores!</p>
+    </div>
+
+    <!-- ========================================================== -->
+    <!--  NOUVEAU : Le conteneur main est maintenant vide.          -->
+    <!--  Le JS va le remplir avec les cartes de résultats.        -->
+    <!-- ========================================================== -->
+    <main id="results-content" style="display: none; width: 100%;"></main>
+
+    <!-- Zone d'erreur (inchangée) -->
+    <div id="error-state" class="card" style="display: none; ...">
+        <!-- ... contenu de l'erreur ... -->
+    </div>
+
+  </div>
+  
+    <!-- Scripts (attention à l'ordre) -->
+    <script>
+        const firebaseConfig = <?!= firebaseConfig ?>;
+        const urlParams = new URLSearchParams(window.location.search);
+        const gameId = urlParams.get('gameId') || "<?!= gameId ?>";
+    </script>
+
+    <!-- Inclusion du fichier JavaScript principal -->
+    <?!= include('BadgeData'); ?>
+    <?!= include('GameResultsPage.js'); ?>
+
+</body>
+</html>

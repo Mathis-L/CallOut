@@ -1,0 +1,323 @@
+<style> 
+/* GameResultsPage.css */
+
+/* --- Import des variables du thème original --- */
+:root {
+  --clr-bg: #FDF6E9;
+  --clr-card-bg: #FFFFFF;
+  --clr-text-dark: #4A2F48;
+  --clr-text-light: #FFFFFF;
+  --clr-primary-green: #2A5757;
+  --clr-primary-orange: #F97A3D;
+  --clr-primary-purple: #4A2F48;
+  --clr-accent-teal: #5DC0A6;
+  --clr-accent-yellow: #F9D423;
+  --clr-heatmap-0: color-mix(in srgb, var(--clr-bg), var(--clr-accent-teal) 5%);
+  --clr-heatmap-1: color-mix(in srgb, var(--clr-bg), var(--clr-accent-teal) 25%);
+  --clr-heatmap-2: color-mix(in srgb, var(--clr-bg), var(--clr-accent-teal) 50%);
+  --clr-heatmap-3: color-mix(in srgb, var(--clr-bg), var(--clr-accent-teal) 75%);
+  --clr-heatmap-4: var(--clr-accent-teal);
+
+  --font-main: 'Poppins', sans-serif;
+  --radius-card: 20px;
+  --radius-button: 12px;
+  --shadow-strong: 5px 5px 0px var(--clr-primary-purple);
+  --border-strong: 3px solid var(--clr-primary-purple);
+  --avatar-chart-size: 30px;
+}
+
+/* ... (Les styles de base, header, cartes, etc. restent les mêmes) ... */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: var(--font-main);
+  background-color: var(--clr-bg);
+  color: var(--clr-text-dark);
+  display: flex;
+  justify-content: center;
+  padding: 20px 15px;
+  min-height: 100vh;
+}
+.container {
+  width: 100%;
+  max-width: 800px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 35px;
+}
+.main-header { text-align: center; margin-bottom: 0; }
+.main-header h1 { font-size: 2.5rem; color: var(--clr-primary-green); }
+.main-header p { font-size: 1.1rem; color: var(--clr-text-dark); }
+.main-header strong { color: var(--clr-primary-orange); }
+
+.results-card, .card {
+  background-color: var(--clr-card-bg);
+  border-radius: var(--radius-card);
+  border: var(--border-strong);
+  box-shadow: var(--shadow-strong);
+  width: 100%;
+  padding: 25px;
+  margin-bottom: 25px;
+}
+.results-card h2 {
+  font-size: 1.6rem;
+  color: var(--clr-primary-purple);
+  margin-bottom: 5px;
+  text-align: center;
+}
+.card-subtitle {
+  font-size: 0.95rem;
+  text-align: center;
+  color: var(--clr-text-dark);
+  margin-bottom: 25px;
+  font-style: italic;
+}
+
+.revealable {
+  opacity: 0;
+  transform: translateY(40px) scale(0.98);
+  transition: opacity 0.8s cubic-bezier(0.25, 1, 0.5, 1), transform 0.8s cubic-bezier(0.25, 1, 0.5, 1);
+  will-change: transform, opacity;
+}
+.revealable.is-visible {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+}
+
+.loader { width: 45px; height: 45px; border: 5px solid var(--clr-input-bg); border-top: 5px solid var(--clr-primary-orange); border-radius: 50%; animation: spin 0.8s linear infinite; margin: 20px auto; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.status-message { font-style: italic; text-align: center; }
+
+.summary-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 20px; text-align: center; }
+.summary-value { display: block; font-size: 2.8rem; font-weight: 900; color: var(--clr-primary-orange); line-height: 1.1; }
+.summary-label { font-size: 1rem; font-weight: 500; color: var(--clr-primary-green); }
+/* ... (Les autres styles comme les badges, heatmap etc. sont corrects, on ajoute les nouveaux) ... */
+.player-badges-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 20px;
+}
+.player-badge-card {
+    background-color: var(--clr-bg);
+    border: 2px solid var(--clr-primary-purple);
+    border-radius: var(--radius-button);
+    padding: 15px;
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+    opacity: 0;
+    transform: translateY(30px) scale(0.95);
+    
+    /* Transition douce pour l'apparition */
+    transition: opacity 0.6s ease-out, transform 0.6s cubic-bezier(0.25, 1, 0.5, 1);
+}
+.player-badge-card.card-is-visible {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+}
+
+.player-badge-info {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+.player-badge-avatar {
+    width: 50px;
+    height: 50px;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 3px solid var(--clr-primary-purple);
+}
+.player-badge-name {
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: var(--clr-primary-green);
+}
+.player-badges-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    border-top: 2px dashed var(--clr-primary-purple);
+    padding-top: 15px;
+    /* NOUVEAU : Améliore le rendu visuel en alignant les badges */
+    align-items: center; 
+}
+
+.badge-item {
+    cursor: help;
+    position: relative;
+    display: inline-flex;
+    justify-content: center;
+    align-items: center;
+    width: 60px;
+    height: 60px;
+    background-color: rgba(74, 47, 72, 0.05);
+    border-radius: 50%;
+
+    /* NOUVEAU : État initial pour l'animation */
+    transform: scale(0) rotate(-45deg);
+    opacity: 0;
+    
+    /* NOUVEAU : Transition pour l'animation "pop-in" */
+    transition: transform 0.5s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.3s ease;
+}
+
+/* NOUVEAU : Classe pour déclencher l'animation */
+.badge-item.pop-in {
+    transform: scale(1) rotate(0);
+    opacity: 1;
+}
+
+
+.badge-item:hover {
+    transform: scale(1.1); /* L'effet de survol est conservé */
+    background-color: rgba(74, 47, 72, 0.1);
+}
+
+.badge-icon-img {
+    width: 55px;
+    height: 55px;
+    object-fit: contain;
+}
+
+
+.badge-item[data-tooltip]::after {
+    /* Styles du tooltip inchangés... */
+    content: attr(data-tooltip);
+    position: absolute;
+    bottom: 100%;
+    left: 50%;
+    transform: translateX(-50%) translateY(-10px);
+    background-color: var(--clr-primary-purple);
+    color: var(--clr-text-light);
+    font-family: var(--font-main);
+    font-size: 0.85rem;
+    font-weight: 500;
+    text-align: center;
+    padding: 8px 12px;
+    border-radius: var(--radius-button);
+    width: max-content;
+    max-width: 220px;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.2s ease, visibility 0.2s ease, transform 0.2s ease;
+    z-index: 100;
+    pointer-events: none;
+}
+
+.badge-item[data-tooltip]:hover::after {
+    opacity: 1;
+    visibility: visible;
+    transform: translateX(-50%) translateY(-5px);
+}
+.no-badges-message {
+    font-style: italic;
+    color: var(--clr-text-dark);
+    opacity: 0.7;
+    width: 100%;
+    text-align: center;
+}
+#network-graph-container {
+    width: 100%;
+    height: 500px;
+    border: 3px solid var(--clr-bg);
+    border-radius: var(--radius-button);
+    background-color: var(--clr-bg);
+}
+.personal-radars-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    gap: 20px;
+}
+.radar-card {
+    background-color: var(--clr-bg);
+    border: 2px solid var(--clr-primary-purple);
+    border-radius: var(--radius-button);
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+.radar-player-info {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: var(--clr-primary-green);
+}
+.radar-player-avatar {
+    width: 45px;
+    height: 45px;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 3px solid var(--clr-primary-purple);
+}
+.radar-chart-container {
+    width: 100%;
+    max-width: 300px;
+}
+
+.chart-container { position: relative; min-height: 400px; width: 100%; }
+
+.heatmap-wrapper { width: 100%; overflow-x: auto; padding-bottom: 10px; }
+#heatmap-container table { width: 100%; border-collapse: collapse; min-width: 500px; }
+#heatmap-container th, #heatmap-container td { border: 3px solid var(--clr-card-bg); text-align: center; min-width: 60px; height: 60px; transition: all 0.2s ease-in-out; }
+#heatmap-container th { background-color: var(--clr-bg); font-size: 0.8rem; vertical-align: bottom; padding: 5px; position: relative; }
+#heatmap-container th .player-avatar { width: 32px; height: 32px; border-radius: 50%; object-fit: cover; border: 2px solid var(--clr-primary-purple); margin: 0 auto 4px; display: block; }
+#heatmap-container th.voter-header { text-align: left; padding-left: 10px; }
+#heatmap-container th.voter-header .player-avatar { display: inline-block; vertical-align: middle; margin-right: 8px; }
+#heatmap-container td { font-weight: 700; font-size: 1.2rem; color: var(--clr-text-dark); cursor: default; opacity: 0; }
+#heatmap-container td[data-votes="0"] { background-color: var(--clr-heatmap-0); }
+#heatmap-container td[data-votes="1"] { background-color: var(--clr-heatmap-1); }
+#heatmap-container td[data-votes="2"] { background-color: var(--clr-heatmap-2); }
+#heatmap-container td[data-votes="3"] { background-color: var(--clr-heatmap-3); }
+#heatmap-container td.hot { background-color: var(--clr-heatmap-4); color: white; }
+#heatmap-container td:not([data-votes="0"]):hover { transform: scale(1.1); box-shadow: 0 0 15px rgba(0,0,0,0.2); z-index: 10; position: relative; }
+#heatmap-container td.is-self { background-image: linear-gradient(45deg, rgba(0,0,0,0.05) 25%, transparent 25%, transparent 75%, rgba(0,0,0,0.05) 75%, rgba(0,0,0,0.05)), linear-gradient(45deg, rgba(0,0,0,0.05) 25%, transparent 25%, transparent 75%, rgba(0,0,0,0.05) 75%, rgba(0,0,0,0.05)); background-size: 10px 10px; background-position: 0 0, 5px 5px; }
+@keyframes fadeInCell { from { opacity: 0; transform: scale(0.7) translateY(10px); } to { opacity: 1; transform: scale(1) translateY(0); } }
+
+/* --- NOUVEAU: Style pour la légende personnalisée --- */
+#stacked-chart-wrapper {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+.custom-legend-container {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 15px;
+    padding: 10px;
+    border-top: 3px dashed var(--clr-accent-teal);
+}
+.legend-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.9rem;
+    font-weight: 500;
+}
+.legend-swatch {
+    width: 15px;
+    height: 15px;
+    border-radius: 4px;
+    border: 2px solid var(--clr-primary-purple);
+}
+.legend-avatar {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    object-fit: cover;
+}
+
+.footer-actions { width: 100%; display: flex; justify-content: center; margin-top: 20px; }
+.button-like-link { display: inline-block; padding: 12px 30px; border: var(--border-strong); border-radius: var(--radius-button); color: var(--clr-text-light); font-family: var(--font-main); font-weight: 700; font-size: 1.1rem; cursor: pointer; transition: all 0.15s ease-out; box-shadow: var(--shadow-strong); text-transform: uppercase; text-decoration: none; background-color: var(--clr-primary-orange); }
+.button-like-link:hover { transform: translateY(-3px) translateX(-3px); box-shadow: 8px 8px 0px var(--clr-primary-purple); }
+
+
+
+
+@media (max-width: 768px) { .main-header h1 { font-size: 2rem; } .results-card { padding: 20px; } .results-card h2 { font-size: 1.4rem; } .summary-value { font-size: 2.2rem; } }
+@media (max-width: 480px) { body { padding: 15px 10px; } .container { gap: 20px; } .main-header h1 { font-size: 1.8rem; } .results-card { padding: 15px; } .results-card h2 { font-size: 1.2rem; } .chart-container { min-height: 300px; } .player-badges-grid, .personal-radars-grid { grid-template-columns: 1fr; } }
+</style> 
