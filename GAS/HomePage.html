@@ -72,7 +72,7 @@
       h1 {
         font-family : var(--font-title);
         font-weight: 900;
-        font-size: clamp(2.5rem, 8vw, 3.5rem); /* Responsive font size */
+        font-size: clamp(2.5rem, 8vw, 3.5rem); 
         color: var(--clr-primary-green);
         margin-bottom: 5px;
         text-align: center;
@@ -261,9 +261,9 @@
           overflow: hidden;
           border: var(--border-strong);
           box-shadow: var(--shadow-strong);
-          display: flex; /* Add this */
-          justify-content: center; /* Add this */
-          align-items: center; /* Add this */
+          display: flex; 
+          justify-content: center;
+          align-items: center; 
           background-color: var(--clr-hand-main);
       }
       #selectedAvatarImg {
@@ -297,10 +297,10 @@
           border: 3px solid var(--clr-primary-purple);
           cursor: pointer;
           transition: all 0.2s ease;
-          background-color: var(--clr-hand-main); /* Placeholder */
+          background-color: var(--clr-hand-main); 
           box-shadow: 3px 3px 0px var(--clr-primary-purple);
           position: relative;
-          justify-self: center; /* Center items in grid cells */
+          justify-self: center; 
       }
       .avatar-option img {
           width: 100%; height: 100%; display: block; object-fit: cover;
@@ -347,7 +347,7 @@
           font-weight: 500;
       }
       
-      /* --- Sparkles pour le titre (téléphone) --- */
+      /* --- Animations & Mobile-Specific Effects --- */
       .title-container {
         position: relative;
         display: inline-block;
@@ -362,9 +362,9 @@
         position: absolute;
         clip-path: polygon(50% 0%, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%);
         z-index: -1;
-        display: none; /* Caché par défaut, affiché seulement en mode téléphone */
+        display: none; 
       }
-      /* Animation de scintillement */
+      
       @keyframes twinkle-right {
         0% { opacity: 0.5; transform: scale(0.8) rotate(0deg); }
         100% { opacity: 1; transform: scale(1.4) rotate(15deg); }
@@ -490,16 +490,16 @@
       
 
       // --- Global Variables ---
-      let webAppBaseUrl = null; // To be loaded on startup, used for generating redirect URLs
-      let currentSelectedAvatarElement = null; // Keeps track of the currently selected avatar DOM element
-      let currentUserId = null; 
+      let webAppBaseUrl = null; // To be loaded on startup for generating redirect URLs
+      let currentSelectedAvatarElement = null; // Tracks the currently selected avatar DOM element
+      let currentUserId = null; // Stores the secure Firebase anonymous user ID
 
 
       // --- Utility Functions ---
 
-      /**
-       * Generates a random game ID of a specified length.
-       * @param {number} [length=6] - The desired length of the game ID.
+     /**
+       * Generates a random alphanumeric game ID.
+       * @param {number} [length=6] - The desired length of the ID.
        * @returns {string} The generated game ID.
        */
       function generateGameId(length = 6) {
@@ -536,7 +536,7 @@
        * @param {string} gameId - The ID of the game.
        * @param {string} userId - The ID of the user.
        * @param {string} pseudo - The user's nickname.
-       * @returns {string|null} The generated URL or null if the base URL is not available.
+       * @returns {string|null} The generated URL, or null if the base URL isn't available.
        */
       function generateRedirectUrl(page, gameId, userId, pseudo) {
         if (!webAppBaseUrl) {
@@ -549,10 +549,10 @@
       }
 
       /**
-       * Displays an alert message in a specified area of the UI.
+       * Displays a temporary alert message in the UI.
        * @param {string} message - The message to display.
-       * @param {string} [type='error'] - The type of alert ('error' or 'message').
-       * @param {HTMLElement} [area=messageArea] - The DOM element where the alert should be displayed.
+       * @param {string} [type='error'] - The alert type ('error' or 'message').
+       * @param {HTMLElement} [area=messageArea] - The DOM element to display the alert in.
        */
       function showAlert(message, type = 'error', area = messageArea) {
         // Remove any existing alert messages in the target area
@@ -588,16 +588,14 @@
        */
       function showRedirection(text, url) {
           confirmationText.textContent = text;
-          confirmationLink.href = url; // Le lien `<a>` fait la navigation directe
+          confirmationLink.href = url; 
           confirmationArea.style.display = 'block';
 
-          // Cacher les sections de création/rejoindre pour éviter confusion
           createGameSection.style.display = 'none';
           joinGameSection.style.display = 'none';
           document.querySelector('.divider').style.display = 'none';
           avatarSelectionGroup.style.display = 'none'; 
 
-          // désactiver les inputs
           pseudoInput.disabled = true;
           pseudoInput.style.textAlign = "center";
           pseudoInput.style.fontWeight = "bolder";
@@ -872,40 +870,30 @@
         if (savedPseudo) pseudoInput.value = savedPseudo;
         populateAvatarOptions();
 
-        // ** NEW SEQUENCE OF EVENTS **
-        // 1. Fetch the app's base URL.
         await fetchWebAppUrl();
-        // 2. Authenticate the user. This will enable the UI on success.
         auth.onAuthStateChanged(async (user) => {
             if (user) {
-                // --- L'UTILISATEUR EST CONNECTÉ ! ---
                 console.log("Signed in anonymously. Secure UID:", user.uid);
-                currentUserId = user.uid; // Stocker l'UID sécurisé
+                currentUserId = user.uid; 
 
-                // Maintenant, et seulement maintenant, on active l'interface
                 createGameBtn.disabled = false;
                 joinGameBtn.disabled = false;
                 createGameBtn.textContent = "Create a Party!";
                 showAlert("Ready to roll! ✨", 'message');
 
             } else {
-                // --- L'UTILISATEUR N'EST PAS CONNECTÉ ---
-                // On essaie de le connecter anonymement
                 console.log("No user signed in. Attempting anonymous sign-in...");
                 try {
                     const userCredential = await auth.signInAnonymously();
-                    // Si la connexion réussit, onAuthStateChanged se redéclenchera avec le nouvel 'user'
-                    // et passera dans le bloc 'if (user)' ci-dessus.
                     console.log("Anonymous sign-in successful, auth state will update.");
                 } catch (error) {
                     console.error("Anonymous sign-in error:", error);
                     showAlert("Could not connect to the game server. Please refresh the page.", 'error');
-                    // Les boutons resteront désactivés
                 }
             }
         });
         
-        // Handle URL parameters (unchanged)
+        // Handle URL parameters
         const urlParams = new URLSearchParams(window.location.search);
         const codeFromUrl = urlParams.get('code');
         if (codeFromUrl) gameIdInput.value = codeFromUrl.toUpperCase();

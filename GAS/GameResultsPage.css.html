@@ -1,7 +1,7 @@
 <style> 
 /* GameResultsPage.css */
 
-/* --- Import des variables du thème original --- */
+/* --- Theme & Core Variables --- */
 :root {
   --clr-bg: #FDF6E9;
   --clr-card-bg: #FFFFFF;
@@ -26,7 +26,7 @@
   --avatar-chart-size: 30px;
 }
 
-/* ... (Les styles de base, header, cartes, etc. restent les mêmes) ... */
+/* Global Resets & Base Styles */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 body {
   font-family: var(--font-main);
@@ -91,7 +91,6 @@ body {
 .summary-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 20px; text-align: center; }
 .summary-value { display: block; font-size: 2.8rem; font-weight: 900; color: var(--clr-primary-orange); line-height: 1.1; }
 .summary-label { font-size: 1rem; font-weight: 500; color: var(--clr-primary-green); }
-/* ... (Les autres styles comme les badges, heatmap etc. sont corrects, on ajoute les nouveaux) ... */
 .player-badges-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
@@ -107,8 +106,6 @@ body {
     gap: 15px;
     opacity: 0;
     transform: translateY(30px) scale(0.95);
-    
-    /* Transition douce pour l'apparition */
     transition: opacity 0.6s ease-out, transform 0.6s cubic-bezier(0.25, 1, 0.5, 1);
 }
 .player-badge-card.card-is-visible {
@@ -139,7 +136,6 @@ body {
     gap: 10px;
     border-top: 2px dashed var(--clr-primary-purple);
     padding-top: 15px;
-    /* NOUVEAU : Améliore le rendu visuel en alignant les badges */
     align-items: center; 
 }
 
@@ -153,16 +149,11 @@ body {
     height: 60px;
     background-color: rgba(74, 47, 72, 0.05);
     border-radius: 50%;
-
-    /* NOUVEAU : État initial pour l'animation */
     transform: scale(0) rotate(-45deg);
     opacity: 0;
-    
-    /* NOUVEAU : Transition pour l'animation "pop-in" */
     transition: transform 0.5s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.3s ease;
 }
 
-/* NOUVEAU : Classe pour déclencher l'animation */
 .badge-item.pop-in {
     transform: scale(1) rotate(0);
     opacity: 1;
@@ -170,7 +161,7 @@ body {
 
 
 .badge-item:hover {
-    transform: scale(1.1); /* L'effet de survol est conservé */
+    transform: scale(1.1); 
     background-color: rgba(74, 47, 72, 0.1);
 }
 
@@ -182,7 +173,6 @@ body {
 
 
 .badge-item[data-tooltip]::after {
-    /* Styles du tooltip inchangés... */
     content: attr(data-tooltip);
     position: absolute;
     bottom: 100%;
@@ -277,7 +267,6 @@ body {
 #heatmap-container td.is-self { background-image: linear-gradient(45deg, rgba(0,0,0,0.05) 25%, transparent 25%, transparent 75%, rgba(0,0,0,0.05) 75%, rgba(0,0,0,0.05)), linear-gradient(45deg, rgba(0,0,0,0.05) 25%, transparent 25%, transparent 75%, rgba(0,0,0,0.05) 75%, rgba(0,0,0,0.05)); background-size: 10px 10px; background-position: 0 0, 5px 5px; }
 @keyframes fadeInCell { from { opacity: 0; transform: scale(0.7) translateY(10px); } to { opacity: 1; transform: scale(1) translateY(0); } }
 
-/* --- NOUVEAU: Style pour la légende personnalisée --- */
 #stacked-chart-wrapper {
     display: flex;
     flex-direction: column;
@@ -314,8 +303,6 @@ body {
 .footer-actions { width: 100%; display: flex; justify-content: center; margin-top: 20px; }
 .button-like-link { display: inline-block; padding: 12px 30px; border: var(--border-strong); border-radius: var(--radius-button); color: var(--clr-text-light); font-family: var(--font-main); font-weight: 700; font-size: 1.1rem; cursor: pointer; transition: all 0.15s ease-out; box-shadow: var(--shadow-strong); text-transform: uppercase; text-decoration: none; background-color: var(--clr-primary-orange); }
 .button-like-link:hover { transform: translateY(-3px) translateX(-3px); box-shadow: 8px 8px 0px var(--clr-primary-purple); }
-
-
 
 
 @media (max-width: 768px) { .main-header h1 { font-size: 2rem; } .results-card { padding: 20px; } .results-card h2 { font-size: 1.4rem; } .summary-value { font-size: 2.2rem; } }

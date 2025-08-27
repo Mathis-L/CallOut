@@ -79,7 +79,7 @@
     position: relative;
   }
   
-  /* --- General Button Styling (reused from other pages) --- */
+  /* --- General Button Styling --- */
   button {
     width: 100%;
     padding: 12px 15px;
@@ -182,10 +182,7 @@
   #next-round-btn.ready { background-color: var(--clr-primary-green); color: var(--clr-accent-yellow); font-weight: bold; }
   
   .button-like-link {
-  /* On réinitialise les styles par défaut des liens */
   text-decoration: none; 
-  
-  /* On applique les mêmes styles que les boutons */
   width: 100%;
   padding: 12px 15px;
   margin-top: 10px;
@@ -200,23 +197,19 @@
   box-shadow: var(--shadow-strong);
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  
-  /* On s'assure que le texte est centré, comme dans un bouton */
   display: flex; 
   justify-content: center; 
   align-items: center;
   text-align: center;
-  box-sizing: border-box; /* Important pour que padding et border soient inclus dans la largeur */
+  box-sizing: border-box;
 }
 
 .button-like-link:hover {
-  /* On réplique l'effet de survol des boutons */
   transform: translateY(-3px) translateX(-3px);
   box-shadow: 8px 8px 0px var(--clr-primary-purple);
 }
 
 .button-like-link:active {
-  /* On réplique l'effet de clic des boutons */
   transform: translateY(0px) translateX(0px);
   box-shadow: var(--shadow-strong);
 }
@@ -260,7 +253,6 @@
     box-shadow: 5px 5px 0px var(--clr-primary-orange) !important; /* Override hover */
     transform: scale(1.05);
   }
-  /* .player-vote-btn.voted-for .player-avatar { border-color: var(--clr-primary-orange); } */
   .player-vote-btn.target-disconnected { opacity: 0.6; background-color: var(--clr-disabled-bg); }
   
   
@@ -444,8 +436,6 @@
   /* Confession part */
 #player-confession-target-options { 
   display: grid;
-  /* La magie est ici : crée des colonnes qui font au minimum 100px, 
-     et se partagent l'espace équitablement (1fr). */
   grid-template-columns: repeat(auto-fit, minmax(100px, 1fr)); 
   gap: 15px; 
   width: 100%; 
@@ -475,10 +465,10 @@
     .coin-animation-spot-popup .coin .head, .coin-animation-spot-popup .coin .tail { font-size: 1.8rem; }
   }
 
-  /* ================================
+ /* ================================
    CONFESSION MODE — THEME OVERRIDES
    ================================ */
-/* Palette dédiée à la confession (neon / drama) */
+  /* Dedicated palette for confession mode (neon / drama) */
 :root {
   --conf-bg-1: #0B0A10;            /* deep ink */
   --conf-bg-2: #1C1133;            /* purple black */
@@ -557,7 +547,6 @@ body.confession-mode #next-round-btn-confession {
 @keyframes reveal-in { to { opacity: 1; transform: none; } }
 
 /* Chooser / target highlights */
-/* Chooser / target highlights — clean glow, pas de grosse bordure */
 #player-list li { position: relative; }
 
 /* CHOOSER: accent aqua + soulignement discret */
@@ -632,7 +621,6 @@ body.confession-mode #next-round-btn-confession {
 .verdict-stamp.rejected { color: var(--conf-secondary); }
 @keyframes stamp-pop { 60% { transform: rotate(-6deg) scale(1.08); } 100% { transform: rotate(-2deg) scale(1); } }
 
-/* Jury meter — sobre, sans dégradé flashy */
 .jury-meter {
   width: 100%;
   height: 10px;
@@ -657,7 +645,6 @@ body.confession-mode #next-round-btn-confession {
   .reveal-in, .verdict-stamp { animation: none; }
 }
 
-/* Le sous-titre : plus grand que le texte normal, mais moins que le titre H2 */
 .confession-subtitle {
   font-size: 1.1em;
   font-weight: 600;
@@ -670,19 +657,7 @@ body.confession-mode #next-round-btn-confession {
   color: var(--clr-primary-orange);
 }
 
-/* Le cadre pour la question, comme avant */
-/* .confession-question-box {
-  width: 100%;
-  padding: 15px;
-  margin-bottom: 20px;
-  background-color: var(--clr-input-bg);
-  border-radius: var(--radius-input);
-  border: var(--border-strong);
-  border-color: var(--clr-primary-green);
-  box-shadow: var(--shadow-strong);
-} */
 
-/* Le texte de la question lui-même, en italique */
 .confession-question-box p {
   font-size: 1.2em;
   font-weight: 600;
@@ -692,7 +667,6 @@ body.confession-mode #next-round-btn-confession {
   margin-bottom: 30px;
 }
 
-/* L'instruction : petite, discrète, mais claire */
 .confession-instruction {
   font-size: 0.9em;
   font-style: italic;

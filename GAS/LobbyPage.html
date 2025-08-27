@@ -34,7 +34,7 @@
         --font-title: 'Lilita One', sans-serif;
         --radius-card: 20px;
         --radius-button: 12px;
-        --radius-input: 10px; /* For radio options visual */
+        --radius-input: 10px;
 
         --shadow-strong: 5px 5px 0px var(--clr-primary-purple);
         --border-strong: 3px solid var(--clr-primary-purple);
@@ -323,7 +323,6 @@
           box-shadow: none;
       }
 
-
       /* Loader simple */
       .loader-container { display: flex; justify-content: center; align-items: center; padding: 20px; }
       .loader { 
@@ -350,7 +349,7 @@
         position: absolute;
         clip-path: polygon(50% 0%, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%);
         z-index: -1;
-        display: none; /* Caché par défaut, affiché seulement en mode téléphone */
+        display: none;
       }
       /* Twinkle Animation */
       @keyframes twinkle-right {
@@ -424,7 +423,6 @@
                     </label>
                 </div>
                <label id="confession-mode-option" class="option-switch-container">
-                    <!-- Le texte est dans un span pour le stylage -->
                     <span class="confession-label-text">😱 Enable Confession Mode?</span>
                     <div class="switch">
                         <input type="checkbox" id="confessionModeToggle">
@@ -537,7 +535,7 @@
 
         /**
          * Initializes the Firebase application and sets up database references for the lobby.
-         * **MODIFIED**: Now also initializes the auth service.
+           also initializes the auth service.
          */
         function initializeFirebase() {
             try {
@@ -611,7 +609,7 @@
              }
              let url = `${webAppBaseUrl}?page=${page}`;
              Object.entries(params).forEach(([key, value]) => {
-                 if (value != null) { // Ajouter seulement si la valeur n'est pas null/undefined
+                 if (value != null) {
                     url += `&${encodeURIComponent(key)}=${encodeURIComponent(value)}`;
                  }
              });
@@ -698,10 +696,9 @@
                  // iOS workaround don't redirect yet show a link to the homepage
                  const homeUrl = getHomeUrl("You’ve left the lobby! ");
                  if (homeUrl) {
-                     showLobbyClosed("You’ve left the lobby!", homeUrl); // Utilise le prompt existant
+                     showLobbyClosed("You’ve left the lobby!", homeUrl);
                  } else {
                      showAlertLobby("You’ve left, but we can’t generate the return link! 🔄 Try again soon!", "message");
-                     // Laisse le bouton désactivé dans cet état étrange
                  }
 
             } catch(error) {
@@ -792,7 +789,6 @@
                          }
                      });
              }, HEARTBEAT_INTERVAL_MS);
-             // MAJ initiale
              if (currentPlayerRef) {
                 currentPlayerRef.update({ lastSeen: firebase.database.ServerValue.TIMESTAMP })
                                 .catch(err => console.warn("Echec MAJ initiale lastSeen:", err));
@@ -873,7 +869,7 @@
                 const currentSet = gameData.selectedQuestionSet || 'mix';
                 questionSetRadios.forEach(radio => {
                     radio.checked = (radio.value === currentSet);
-                    radio.disabled = !isLeader || currentStatus !== 'waiting'; // Désactiver si pas leader ou jeu démarré
+                    radio.disabled = !isLeader || currentStatus !== 'waiting'; 
                 });
 
                 if (currentStatus === 'playing') {
@@ -881,21 +877,20 @@
                     // iOS workaround
                     const gameUrl = generateRedirectUrl('game', { gameId, userId: currentUserId, pseudo: currentUserPseudo });
                      if (gameUrl) {
-                        showGameStartingPrompt(gameUrl); // Passer l'URL à la fonction
+                        showGameStartingPrompt(gameUrl); 
                      } else {
                          showAlertLobby("The game’s starting, but whoops! 🚨 Internal error creating the game link!", "error");
                      }
                     return;
                 }
 
-                // Si on est toujours en 'waiting'
                 console.log("Statut 'waiting'. Mise à jour UI lobby.");
-                lobbyContentDiv.style.display = 'block'; // Assurer que le lobby est visible
+                lobbyContentDiv.style.display = 'block'; 
                 gameStartingPromptDiv.style.display = 'none';
                 lobbyClosedPromptDiv.style.display = 'none';
 
-                startGameBtn.disabled = false; // Réactiver au cas où
-                if (isLeader && currentStatus === 'waiting') { // Afficher seulement si leader et en attente
+                startGameBtn.disabled = false;
+                if (isLeader && currentStatus === 'waiting') { 
                     leaderControlsDiv.style.display = 'block';
                     startGameBtn.style.display = 'block'; 
                     document.getElementById('confessionModeToggle').disabled = false;
@@ -913,9 +908,8 @@
                 showLobbyClosed(`Critical error connecting to the lobby! 🚨 Error: ${error.message}`);
             });
 
-            // Listener pour la liste des joueurs
             playersListener = playersRef.on('value', (snapshot) => {
-                 if (!gameStatusListener) { console.log("Listener joueurs: Ignoré (statut inactif)."); return; } // Si jeu démarré ou lobby fermé
+                 if (!gameStatusListener) { console.log("Listener joueurs: Ignoré (statut inactif)."); return; }
                  console.log("Listener playersRef (Lobby): Données reçues.");
                  const playersData = snapshot.val();
                  updatePlayerListUI(playersData);
@@ -933,17 +927,13 @@
          */
         function showGameStartingPrompt(gameUrl) {
              console.log("Affichage invite pour rejoindre partie démarrée.");
-             cleanupBeforeRedirect(); // Nettoyer les listeners/timers du lobby
+             cleanupBeforeRedirect(); 
 
-             // Configurer le lien AVANT de l'afficher
              joinStartedGameLink.href = gameUrl;
 
-             // Afficher l'invite et cacher le contenu du lobby
              lobbyContentDiv.style.display = 'none';
              lobbyClosedPromptDiv.style.display = 'none';
              gameStartingPromptDiv.style.display = 'block';
-
-             // Pas besoin d'attacher d'event listener JS, le lien <a> gère la navigation.
         }
 
         /**
@@ -954,27 +944,22 @@
          */
         function showLobbyClosed(message, homeUrl = null) {
             console.log("Affichage invite lobby fermé/erreur:", message);
-            cleanupBeforeRedirect(); // Nettoyer tout
+            cleanupBeforeRedirect(); 
 
             lobbyClosedText.textContent = message;
 
-            // Générer l'URL de retour si non fournie (ex: pour erreurs internes)
             if (!homeUrl) {
                  homeUrl = getHomeUrl(null, "Returning after an error/closure of the lobby!");
             }
 
-            // Configurer le lien de retour AVANT d'afficher
             if (homeUrl) {
                 backHomeLink.href = homeUrl;
-                backHomeLink.style.display = 'flex'; // Afficher le lien
+                backHomeLink.style.display = 'flex'; 
             } else {
-                // Si même l'URL de base n'est pas dispo, cacher le lien
                 backHomeLink.style.display = 'none';
-                 // Ajouter un message indiquant l'impossibilité de revenir
                 lobbyClosedText.textContent += " Can't generate the return link! ";
             }
 
-            // Afficher le prompt et cacher les autres contenus
             lobbyContentDiv.style.display = 'none';
             gameStartingPromptDiv.style.display = 'none';
             lobbyClosedPromptDiv.style.display = 'block';
@@ -990,8 +975,7 @@
             startHeartbeat();
         }
 
-         // --- Initialisation au chargement ---
-         // --- Page Load & Initialization Logic (Completely Rewritten) ---
+          // --- PAGE INITIALIZATION SEQUENCE ---
           document.addEventListener('DOMContentLoaded', async () => {
               gameCodeDisplay.textContent = gameId;
               loaderArea.style.display = 'block';
@@ -999,28 +983,25 @@
               startGameBtn.disabled = true;
               leaderControlsDiv.style.display = 'none';
 
-             // 1. D'abord, récupérer l'URL (ne dépend pas de l'auth)
+             // 1. Fetch the web app URL first.
             await fetchWebAppUrl();
 
-            // 2. Initialiser Firebase, y compris l'auth
+            // 2. Initialize Firebase services.
             if (!initializeFirebase()) {
-                // L'initialisation a échoué, showLobbyClosed a déjà été appelé. On arrête.
                 return;
             }
 
-            // 3. LA CORRECTION : Utiliser onAuthStateChanged pour attendre l'état d'authentification
+             // 3. Use onAuthStateChanged to ensure the user is authenticated BEFORE attaching listeners.
+            //    This is a critical step for security and preventing permission errors.
             auth.onAuthStateChanged(user => {
                 if (user) {
                     // --- L'UTILISATEUR EST CONNECTÉ ---
                     console.log("Firebase Auth state confirmed for user:", user.uid);
                     
-                    // **Vérification de sécurité cruciale :**
-                    // L'UID de l'utilisateur authentifié correspond-il à celui de l'URL ?
+                    // Security Check: Ensure the authenticated user ID matches the one from the URL.
                     if (user.uid === currentUserId) {
-                        // Tout est en ordre ! On lance l'expérience du lobby.
                         startLobbyExperience();
                     } else {
-                        // Problème de sécurité majeur ! L'utilisateur est connecté en tant que qqn d'autre.
                         console.error("Security Mismatch: Auth UID does not match URL userId. Redirecting home.");
                         showLobbyClosed(
                             "Session mismatch! For your security, you've been disconnected.",
@@ -1028,8 +1009,6 @@
                         );
                     }
                 } else {
-                    // --- AUCUN UTILISATEUR CONNECTÉ ---
-                    // Il ne devrait pas être ici.
                     console.warn("No authenticated user found. Access denied.");
                     showLobbyClosed(
                         "You need to join the game from the home page to enter a lobby.",
@@ -1045,29 +1024,25 @@
                     const selectedSet = event.target.value;
                     console.log(`Leader a choisi le set: ${selectedSet}`);
                     questionSetStatus.textContent = 'Saving...';
-                    questionSetRadios.forEach(r => r.disabled = true); // Désactiver pendant la sauvegarde
+                    questionSetRadios.forEach(r => r.disabled = true); 
 
                     gameRef.update({ selectedQuestionSet: selectedSet })
                         .then(() => {
                             console.log("Set de questions mis à jour dans Firebase.");
                             questionSetStatus.textContent = `You’ve selected '${selectedSet}'! ✅`;
-                            setTimeout(() => { questionSetStatus.textContent = ''; }, 2000); // Effacer message après 2s
+                            setTimeout(() => { questionSetStatus.textContent = ''; }, 2000);
                         })
                         .catch(error => {
                             console.error("Erreur sauvegarde set questions:", error);
                             questionSetStatus.textContent = 'Save error! Try again!';
-                            // Remettre la sélection précédente ? Ou laisser tel quel et l'utilisateur réessaie.
                         })
                         .finally(() => {
-                            // Réactiver seulement si on est toujours leader et en attente
-                            const stillWaiting = localGameState?.status === 'waiting'; // Vérifier l'état actuel
+                            const stillWaiting = localGameState?.status === 'waiting';
                             questionSetRadios.forEach(r => r.disabled = !isLeader || !stillWaiting);
                         });
                 }
             });
 
-            // Event listener for the "Start Game" button.
-            // If the current user is the leader, it updates the game status to 'playing' in Firebase.
             startGameBtn.addEventListener('click', () => {
                 if (!isLeader || !gameRef) return;
                 console.log("Clic leader sur 'Démarrer'.");

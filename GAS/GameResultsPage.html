@@ -3,12 +3,14 @@
 <head>
     <base target="_top">
     <title>Call Out! - Game Results</title>
-    <!-- Dépendances externes -->
+    <!-- External Libraries & Dependencies -->
+    <!-- Firebase SDK for database and authentication -->
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
-    <!-- Chart.js - La bibliothèque pour nos superbes graphiques -->
+    <!-- Chart.js for creating beautiful data visualizations (radars, bars, etc.) -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
+    <!-- Vis.js Network for the player interaction graph -->
      <script src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
     
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -16,7 +18,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;900&display=swap" rel="stylesheet">
     <meta name="viewport" content="width=device-width, initial-scale=1">
 
-    <!-- Inclusion du fichier CSS pour les résultats -->
+    <!-- Server-side include of the page's stylesheet. -->
     <?!= include('GameResultsPage.css'); ?>
 </head>
 <body>
@@ -27,34 +29,32 @@
       <p>Here's the final breakdown of game <strong id="game-id-display">#...</strong></p>
     </header>
 
-    <!-- Zone de chargement (inchangée) -->
+    <!-- Loading State: Displayed while fetching and processing game data. -->
     <div id="loading-state" class="card">
         <h2>Crunching the Numbers...</h2>
         <div class="loader"></div>
         <p class="status-message">Unearthing secrets and tallying scores!</p>
     </div>
 
-    <!-- ========================================================== -->
-    <!--  NOUVEAU : Le conteneur main est maintenant vide.          -->
-    <!--  Le JS va le remplir avec les cartes de résultats.        -->
-    <!-- ========================================================== -->
+    <!-- Main Content Area. This container will be populated by JS. -->
     <main id="results-content" style="display: none; width: 100%;"></main>
 
-    <!-- Zone d'erreur (inchangée) -->
+    <!-- Error State: Displayed if there's a problem fetching the game data. -->
     <div id="error-state" class="card" style="display: none; ...">
-        <!-- ... contenu de l'erreur ... -->
+        <h2>Oops! Something went wrong.</h2>
+        <p class="status-message">We couldn't load the results for this game. Please check the Game ID and try again.</p>
     </div>
 
   </div>
   
-    <!-- Scripts (attention à l'ordre) -->
+    <!-- Scripts -->
     <script>
         const firebaseConfig = <?!= firebaseConfig ?>;
         const urlParams = new URLSearchParams(window.location.search);
         const gameId = urlParams.get('gameId') || "<?!= gameId ?>";
     </script>
 
-    <!-- Inclusion du fichier JavaScript principal -->
+    <!--  Includes the core application logic + badge Images -->
     <?!= include('BadgeData'); ?>
     <?!= include('GameResultsPage.js'); ?>
 

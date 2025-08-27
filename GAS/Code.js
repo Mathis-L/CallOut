@@ -1,26 +1,25 @@
-// --- Configuration Firebase ---
-// REMPLACEZ PAR VOS PROPRES VALEURS !
+// --- Firebase Configuration ---
 const scriptProperties = PropertiesService.getScriptProperties();
 const FIREBASE_CONFIG = {
   apiKey: scriptProperties.getProperty('FIREBASE_API_KEY'),
   authDomain: scriptProperties.getProperty('FIREBASE_AUTH_DOMAIN'),
-  databaseURL: scriptProperties.getProperty('FIREBASE_DATABASE_URL'), // Important pour Realtime Database
+  databaseURL: scriptProperties.getProperty('FIREBASE_DATABASE_URL'), 
   projectId: scriptProperties.getProperty('FIREBASE_PROJECT_ID')
 };
 
-// Fonction principale qui sert l'interface utilisateur
+// Main function that serves the user interface
 function doGet(e) {
-  // Logger les paramètres pour le débogage si nécessaire
-  // Logger.log("doGet reçu : " + JSON.stringify(e));
+   // Log parameters for debugging if necessary
+  // Logger.log("doGet received: " + JSON.stringify(e));
 
-  // Récupérer les paramètres de l'URL
-  let page = e.parameter.page || 'home'; // Page par défaut: accueil
+  // Get URL parameters
+  let page = e.parameter.page || 'home'; // Default page: home
   let gameId = e.parameter.gameId || null;
   let userId = e.parameter.userId || null;
   let pseudo = e.parameter.pseudo || null;
-  let action = e.parameter.action || null; // Nouveau paramètre pour savoir quoi faire sur la page cible
-  let error = e.parameter.error || null; // Pour afficher des messages d'erreur
-  let message = e.parameter.message || null; // Pour afficher des messages d'info
+  let action = e.parameter.action || null; // Parameter to determine the action on the target page
+  let error = e.parameter.error || null; // To display error messages
+  let message = e.parameter.message || null; // To display info messages
 
   let template;
 
@@ -33,20 +32,20 @@ function doGet(e) {
         template.message = message;
         return template.evaluate()
           .setTitle('Home - Multiplayer Game GAS')
-          .setFaviconUrl("https://i.imgur.com/3dZdJFS.png") // icône d'onglet web
+          .setFaviconUrl("https://i.imgur.com/3dZdJFS.png") 
           .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL)
           .addMetaTag('viewport', 'width=device-width, initial-scale=1');
 
       case 'lobby':
-        // Vérification basique des paramètres nécessaires pour le lobby
+        // Basic check for required lobby parameters
         if (!gameId || !pseudo) {
-          // Rediriger vers l'accueil avec une erreur si les infos de base manquent
+           // If essential info is missing, show the home page with an error
           Logger.log(`Paramètres manquants pour lobby: gameId=${gameId}, pseudo=${pseudo}`);
           template = HtmlService.createTemplateFromFile('HomePage');
           template.firebaseConfig = JSON.stringify(FIREBASE_CONFIG);
           template.error = "Impossible d'accéder au lobby : informations manquantes.";
           template.message = null;
-          // Note : On ne peut pas faire de redirection serveur ici facilement, on affiche l'accueil
+          // Note: A server-side redirect isn't straightforward here, so we display the home page instead
           return template.evaluate()
                  .setTitle('Error - Multiplayer Game GAS')
                  .setFaviconUrl("https://i.imgur.com/3dZdJFS.png")
@@ -56,9 +55,9 @@ function doGet(e) {
         template = HtmlService.createTemplateFromFile('LobbyPage');
         template.firebaseConfig = JSON.stringify(FIREBASE_CONFIG);
         template.gameId = gameId;
-        template.userId = userId; // Peut être null si on rejoint
+        template.userId = userId; // Can be null when a player is joining
         template.pseudo = pseudo;
-        template.action = action; // 'create' ou 'join'
+        template.action = action; // 'create' or 'join'
         return template.evaluate()
           .setTitle(`Lobby ${gameId} - Multiplayer Game GAS`)
           .setFaviconUrl("https://i.imgur.com/3dZdJFS.png")
@@ -66,7 +65,7 @@ function doGet(e) {
           .addMetaTag('viewport', 'width=device-width, initial-scale=1');
 
       case 'game':
-        // Vérification basique des paramètres nécessaires pour le jeu
+        // Basic check for required game parameters
          if (!gameId || !userId || !pseudo) {
              Logger.log(`Paramètres manquants pour game: gameId=${gameId}, userId=${userId}, pseudo=${pseudo}`);
              template = HtmlService.createTemplateFromFile('HomePage');
@@ -79,7 +78,7 @@ function doGet(e) {
                     .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL)
                     .addMetaTag('viewport', 'width=device-width, initial-scale=1');
          }
-         template = HtmlService.createTemplateFromFile('GamePage'); // Charger la nouvelle page
+         template = HtmlService.createTemplateFromFile('GamePage');
          template.firebaseConfig = JSON.stringify(FIREBASE_CONFIG);
          template.gameId = gameId;
          template.userId = userId;
@@ -108,7 +107,7 @@ function doGet(e) {
           .addMetaTag('viewport', 'width=device-width, initial-scale=1');
           
       default:
-        // Page inconnue, rediriger vers l'accueil
+        // Unknown page, redirect to home
         Logger.log(`Page inconnue demandée: ${page}`);
         template = HtmlService.createTemplateFromFile('HomePage');
         template.firebaseConfig = JSON.stringify(FIREBASE_CONFIG);
@@ -122,39 +121,37 @@ function doGet(e) {
     }
   } catch (err) {
     Logger.log("Erreur critique dans doGet: " + err + "\nStack: " + err.stack);
-    // Page d'erreur générique en cas de problème serveur
     return HtmlService.createHtmlOutput(`<b>Erreur serveur lors du chargement de la page.</b><br>Détails : ${err}`)
              .setTitle('Erreur Serveur')
              .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
   }
 }
 
-// Fonction exportée pour que le client puisse obtenir l'URL de base
+// Exported function so the client-side script can get the web app's base URL
 function getScriptUrl() {
  try {
    const url = ScriptApp.getService().getUrl();
-   // Logger.log("getScriptUrl() appelée, retourne: " + url);
+   // Logger.log("getScriptUrl() called, returns: " + url);
    return url;
  } catch (error) {
     Logger.log("Erreur dans getScriptUrl: " + error);
-    // Il n'est pas possible de retourner une erreur directement au client ici
-    // Le client gérera l'échec dans withFailureHandler
+    // The client will handle the failure in its withFailureHandler
     throw new Error("Impossible de récupérer l'URL du script.");
  }
 }
 
-// Fonction pour inclure des fichiers HTML partiels (si nécessaire, ex: CSS commun) 
-// Utile pour Google Apps Script
+// Function to include partial HTML files (e.g., for common CSS or JS).
+// This is a common pattern in Google Apps Script web apps.
 function include(filename) {
   return HtmlService.createHtmlOutputFromFile(filename).getContent();
 }
 
-// Fonction pour supprimer tout les lobbies qui ont mal été fermé, 
-// à appeler périodiquement avec 'Déclencheurs' (icône ⏰ à gauche de Apps Scripts)
-// à vous de sélectionner la période pour quand appeler la fonction
+// Periodically cleans up old lobbies that were not closed properly.
+// This function should be called using a time-based trigger
+// in the Apps Script editor (⏰ icon).
 function cleanUpOldLobbies() {
   const databaseUrl = FIREBASE_CONFIG.databaseURL;
-  const secret = scriptProperties.getProperty('FIREBASE_DATABASE_ID'); // Token d'authentification
+  const secret = scriptProperties.getProperty('FIREBASE_DATABASE_ID'); // Authentication token
 
   const lobbiesPath = `${databaseUrl}/lobbies.json?auth=${secret}`;
 
@@ -174,7 +171,6 @@ function cleanUpOldLobbies() {
     for (let lobbyId in lobbies) {
       const lobby = lobbies[lobbyId];
 
-      // Vérifie la présence de la date de création
       if (!lobby.createdAt) {
         Logger.log(`Lobby ${lobbyId} ne contient pas 'createdAt'. Ignoré.`);
         continue;
